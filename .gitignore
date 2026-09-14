@@ -1,0 +1,23 @@
+.env
+__pycache__/
+*.pyc
+.venv/
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+
+# Voice model weights/indices — large binaries, not source. See
+# data/voice-models/README.md (or docker-compose.yml's comment) for how
+# they're populated (tools/import_voice_models.py or the admin upload UI).
+/data/voice-models/weights/*
+/data/voice-models/indices/*
+!/data/voice-models/weights/.gitkeep
+!/data/voice-models/indices/.gitkeep
+
+# Vendored RVC engine's pretrained model files — 189MB/181MB, over GitHub's
+# 100MB hard push limit. Fetch these before building services/workers'
+# Dockerfile.gpu image; see README's "Setup" section.
+/services/workers/rvc_engine/assets/hubert_base/pytorch_model.bin
+/services/workers/rvc_engine/assets/rmvpe/rmvpe.pt

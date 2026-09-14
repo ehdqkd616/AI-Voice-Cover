@@ -1,0 +1,28 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+python-multipart==0.0.12
+pydantic==2.9.0
+pydantic-settings==2.5.2
+sqlalchemy==2.0.35
+alembic==1.13.3
+psycopg[binary]==3.2.2
+redis==5.0.8
+celery==5.4.0
+boto3==1.35.0
+python-magic==0.4.27
+yt-dlp>=2024.10.0
+librosa==0.10.2
+soundfile==0.12.1
+pyloudnorm==0.1.1
+numpy==1.26.4
+scipy==1.14.0
+bcrypt==4.2.0
+email-validator==2.2.0
+# CPU-only wheel — only used by the admin voice-model upload endpoint to
+# inspect an RVC checkpoint's version/sample_rate/f0 via torch.load(). Plain
+# `torch==2.4.1` (no index override) resolves to PyPI's default Linux wheel,
+# which bundles the full CUDA runtime (nvidia-cublas/cudnn/cufft/... — several
+# GB) even though this endpoint never runs on GPU; pin the explicit `+cpu`
+# build from PyTorch's own CPU wheel index instead to keep this image small.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.4.1+cpu

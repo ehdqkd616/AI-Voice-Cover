@@ -1,0 +1,23 @@
+# CUDA PyTorch wheels — swap this index back to /whl/cpu if these workers ever
+# run on a host with no CUDA device (both Demucs and RVC fall back to CPU
+# automatically; see .env.example's note on this host's current driver mismatch).
+--extra-index-url https://download.pytorch.org/whl/cu121
+torch==2.4.1
+torchaudio==2.4.1
+demucs==4.0.1
+
+# RVC inference stack (services/workers/rvc_engine/). Versions loosely follow
+# RVC-Learning's own requirments_cu128_py312.txt, trimmed to what the vendored
+# infer/*, configs/*, i18n/*, tools/* subtree actually imports (no train/,
+# webui.py, pymss/, multispeaker.py, realtime, etc. — those weren't vendored).
+transformers>=4.49,<4.50
+faiss-cpu>=1.8,<2
+praat-parselmouth>=0.4.5,<1
+torchfcpe>=0.0.4,<0.1
+av>=15,<16
+scikit-learn>=1.6,<2
+# infer/audio.py's FFmpeg fallback path (`import ffmpeg`) — not in the original
+# spec list for this file; found by grepping the vendored source's imports
+# (Part B's "reconcile any gap you find" instruction) and confirmed missing
+# from requirements.txt/requirements-gpu.txt as drafted.
+ffmpeg-python>=0.2.0,<1

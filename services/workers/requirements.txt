@@ -1,0 +1,14 @@
+pydantic==2.9.0
+pydantic-settings==2.5.2
+celery==5.4.0
+redis==5.0.8
+sqlalchemy==2.0.35
+psycopg[binary]==3.2.2
+boto3==1.35.0
+yt-dlp>=2024.10.0
+mutagen==1.47.0
+librosa==0.10.2
+soundfile==0.12.1
+pyloudnorm==0.1.1
+numpy==1.26.4
+scipy==1.14.0

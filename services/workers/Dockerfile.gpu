@@ -1,0 +1,46 @@
+# Demucs separation + RVC voice conversion combined — this host's single 4GB
+# GPU (GTX 1050 Ti) means the two heaviest jobs can never run concurrently, so
+# docker-compose's worker-separate-convert consumes both `separate` and
+# `convert` queues from one process (-P solo -c 1). `workers.tasks` imports
+# every task module at Celery startup, so this image needs the base worker
+# deps (yt-dlp, librosa, pyloudnorm, ...) plus torch/demucs/RVC's inference
+# stack. The CUDA runtime ships inside the torch/cu121 wheel, so a plain
+# Python base image is enough — no CUDA base image needed (nvidia-container-toolkit
+# on the Docker host + the GPU reservation in docker-compose.yml still apply).
+FROM python:3.11-slim
+
+WORKDIR /srv
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsndfile1 \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY services/workers/requirements.txt ./requirements.txt
+COPY services/workers/requirements-gpu.txt ./requirements-gpu.txt
+RUN pip install --no-cache-dir -r requirements.txt -r requirements-gpu.txt
+
+COPY services/common ./common
+COPY services/workers ./workers
+
+# /srv for `common`/`workers` imports; /srv/workers/rvc_engine for the vendored
+# `infer`/`configs`/`i18n`/`tools` imports — rvc_engine is a PYTHONPATH root,
+# not an installed package (see convert/engine.py's module docstring; that
+# module also belt-and-suspenders sys.path.insert()s it, for standalone runs
+# outside this container where PYTHONPATH isn't set this way).
+ENV PYTHONPATH=/srv:/srv/workers/rvc_engine PYTHONUNBUFFERED=1
+# DEMUCS_DEVICE / CUDA_VISIBLE_DEVICES are set via .env / docker-compose env_file
+# at runtime, not baked in here.
+
+# Preload the fast-tier Demucs model at build time so the first job doesn't
+# stall on a download. htdemucs_ft (HQ tier) is left to lazy-load on first use —
+# this app's CoverRequest has no quality knob, so `fast` is the only tier used.
+RUN python -c "from demucs.pretrained import get_model; get_model('htdemucs')"
+
+# Primary fix for the two vendored-RVC CWD-relative gotchas (i18n locale file
+# and, indirectly, index lookups under configs/config.py's env-var defaults) —
+# see convert/engine.py's module docstring for the full explanation and the
+# belt-and-suspenders fallback it applies when this WORKDIR isn't in effect
+# (e.g. a bare `python -m ...` smoke test run outside Docker).
+WORKDIR /srv/workers/rvc_engine
+
+CMD ["celery", "-A", "workers.celery_app", "worker", "-Q", "separate,convert", "-c", "1", "-P", "solo", "--loglevel=INFO"]

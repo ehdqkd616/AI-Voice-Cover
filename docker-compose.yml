@@ -1,0 +1,154 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-app_pass}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_voice_cover}
+    ports: ["${POSTGRES_PORT:-5433}:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru
+    ports: ["${REDIS_PORT:-6380}:6379"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:-minioadmin}
+    ports: ["${MINIO_PORT:-9010}:9000", "${MINIO_CONSOLE_PORT:-9011}:9001"]
+    volumes: ["miniodata:/data"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:
+    build: { context: ., dockerfile: services/api/Dockerfile }
+    env_file: .env
+    ports: ["${API_PORT:-8010}:8000"]
+    command: sh -c "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    volumes:
+      - ./services/api/app:/srv/app
+      - ./services/api/alembic:/srv/alembic
+      - ./services/common:/srv/common
+      - ./data/voice-models:/srv/models
+
+  # worker-download/worker-dsp/beat share the identical Dockerfile — pin them
+  # to the same image name so `docker compose build` builds it once instead
+  # of three near-duplicate ~2.4GB images (this was tripling disk usage for
+  # zero benefit, since none of them customize the build).
+  worker-download:
+    build: { context: ., dockerfile: services/workers/Dockerfile }
+    image: ai-voice-cover-worker-base
+    env_file: .env
+    command: celery -A workers.celery_app worker -Q download -c 8 -P threads --loglevel=INFO
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    volumes:
+      - ./services/workers:/srv/workers
+      - ./services/common:/srv/common
+
+  # Demucs separation + RVC voice conversion share one GPU-bound container so
+  # the two heaviest jobs on this host's single 4GB GTX 1050 Ti can never run
+  # concurrently (-P solo -c 1, consuming both queues). Split into two
+  # containers (+ a Redis GPU mutex) later if throughput ever demands it.
+  worker-separate-convert:
+    build: { context: ., dockerfile: services/workers/Dockerfile.gpu }
+    env_file: .env
+    command: celery -A workers.celery_app worker -Q separate,convert -c 1 -P solo --loglevel=INFO
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    volumes:
+      - ./services/workers:/srv/workers
+      - ./services/common:/srv/common
+      - demucs-models:/root/.cache/torch
+      - hf-cache:/root/.cache/huggingface
+      - ./data/voice-models:/srv/models
+
+  worker-dsp:
+    build: { context: ., dockerfile: services/workers/Dockerfile }
+    image: ai-voice-cover-worker-base
+    env_file: .env
+    command: celery -A workers.celery_app worker -Q dsp -c 4 -P prefork --loglevel=INFO
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    volumes:
+      - ./services/workers:/srv/workers
+      - ./services/common:/srv/common
+
+  beat:
+    build: { context: ., dockerfile: services/workers/Dockerfile }
+    image: ai-voice-cover-worker-base
+    env_file: .env
+    command: celery -A workers.celery_app beat --loglevel=INFO
+    restart: unless-stopped
+    depends_on:
+      redis: { condition: service_healthy }
+    volumes:
+      - ./services/workers:/srv/workers
+      - ./services/common:/srv/common
+
+  web:
+    build: { context: ./apps/web }
+    env_file: .env
+    environment:
+      NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-http://localhost:8010}
+    ports: ["${WEB_PORT:-3010}:3000"]
+    restart: unless-stopped
+    depends_on: [api]
+    volumes:
+      - ./apps/web:/srv/app
+      - web-node-modules:/srv/app/node_modules
+      - web-next:/srv/app/.next
+
+volumes:
+  pgdata:
+  miniodata:
+  demucs-models:
+  hf-cache:
+  # NOTE: voice models (weights/*.pth + indices/*.index) are NOT a named
+  # volume — they're bind-mounted straight from ./data/voice-models/ (see the
+  # api/worker-separate-convert services above) so they show up as a normal,
+  # browsable folder inside the project instead of living under
+  # /var/lib/docker/volumes/. That folder is gitignored (large binaries).
+  web-node-modules:
+  web-next:
