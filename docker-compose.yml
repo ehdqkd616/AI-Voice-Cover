@@ -115,6 +115,26 @@ services:
       - ./services/workers:/srv/workers
       - ./services/common:/srv/common
 
+  # UVR-MDX-NET separation — an alternative to Demucs the user can pick per
+  # cover request. Deliberately its own image/container: audio-separator
+  # pulls in a much newer torch than the RVC engine is pinned against
+  # (requirements-mdx.txt), so it can't share worker-separate-convert's
+  # environment, and it runs CPU-only (no GPU reservation) so it never
+  # competes with Demucs/RVC for the host's single 4GB GPU.
+  worker-mdx:
+    build: { context: ., dockerfile: services/workers/Dockerfile.mdx }
+    env_file: .env
+    command: celery -A workers.celery_app worker -Q mdx -c 1 -P solo --loglevel=INFO
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+      minio: { condition: service_healthy }
+    volumes:
+      - ./services/workers:/srv/workers
+      - ./services/common:/srv/common
+      - mdx-models:/tmp/audio-separator-models
+
   beat:
     build: { context: ., dockerfile: services/workers/Dockerfile }
     image: ai-voice-cover-worker-base
@@ -145,6 +165,7 @@ volumes:
   miniodata:
   demucs-models:
   hf-cache:
+  mdx-models:
   # NOTE: voice models (weights/*.pth + indices/*.index) are NOT a named
   # volume — they're bind-mounted straight from ./data/voice-models/ (see the
   # api/worker-separate-convert services above) so they show up as a normal,

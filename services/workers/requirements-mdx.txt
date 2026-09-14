@@ -1,0 +1,38 @@
+# UVR-MDX-NET (and other audio-separator-supported architectures) —
+# isolated in its own worker image/venv, NOT layered on top of
+# requirements.txt like the other worker Dockerfiles do. Two independent
+# reasons:
+#   1. audio-separator pulls in a much newer torch than the RVC engine is
+#      pinned/verified against (torch==2.4.1 in requirements-gpu.txt);
+#      mixing them in one environment risks pip silently upgrading torch
+#      out from under RVC.
+#   2. audio-separator requires numpy>=2, which directly conflicts with
+#      requirements.txt's numpy==1.26.4 (pinned there for librosa/scipy
+#      compatibility in the OTHER workers) — pip's resolver can't satisfy
+#      both in the same environment at all (ResolutionImpossible), not just
+#      "risky", so this file intentionally does NOT build on requirements.txt.
+# This is a fully self-contained requirements file — every package this
+# container needs, not just the MDX-specific ones.
+#
+# CPU-only (onnxruntime, not onnxruntime-gpu) — this container never
+# competes with worker-separate-convert for the host's single 4GB GPU.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.0+cpu
+audio-separator==0.47.0
+onnxruntime==1.30.0
+
+# Everything else tasks/cover.py needs just to be importable (Celery task
+# registration) + this task's own actual work (DB, storage, download).
+pydantic==2.9.0
+pydantic-settings==2.5.2
+celery==5.4.0
+redis==5.0.8
+sqlalchemy==2.0.35
+psycopg[binary]==3.2.2
+boto3==1.35.0
+yt-dlp>=2024.10.0
+mutagen==1.47.0
+librosa>=0.10.2
+soundfile==0.12.1
+pyloudnorm==0.1.1
+scipy>=1.14.0

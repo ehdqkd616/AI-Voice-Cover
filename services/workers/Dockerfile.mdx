@@ -1,0 +1,32 @@
+# UVR-MDX-NET separation — isolated image (see requirements-mdx.txt for why:
+# audio-separator's own torch requirement is much newer than the RVC engine's
+# pinned torch==2.4.1, so this can't safely share worker-separate-convert's
+# environment). CPU-only inference, no GPU reservation — keeps this off the
+# host's single 4GB GPU entirely, avoiding any VRAM contention with
+# Demucs/RVC.
+FROM python:3.11-slim
+
+WORKDIR /srv
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ffmpeg libsndfile1 gcc g++ \
+    && rm -rf /var/lib/apt/lists/*
+
+# NOT services/workers/requirements.txt — see requirements-mdx.txt's header
+# for why this image is intentionally self-contained rather than layered.
+COPY services/workers/requirements-mdx.txt ./requirements-mdx.txt
+RUN pip install --no-cache-dir -r requirements-mdx.txt
+
+COPY services/common ./common
+# Whole services/workers tree, not just separation/ — workers/tasks/__init__.py
+# eagerly imports every tasks.* module (incl. tasks/cover.py, which imports
+# convert.engine/mix.mixer/download.ytdlp_config at its own top level) so
+# Celery can register all task names. Those modules stay import-safe here
+# because THEY lazy-import their own heavy deps (torch, the RVC engine)
+# inside functions — same discipline as separation/separator.py — but the
+# .py files themselves still have to exist on disk for the import to resolve.
+COPY services/workers ./workers
+
+ENV PYTHONPATH=/srv PYTHONUNBUFFERED=1
+
+CMD ["celery", "-A", "workers.celery_app", "worker", "-Q", "mdx", "-c", "1", "-P", "solo", "--loglevel=INFO"]

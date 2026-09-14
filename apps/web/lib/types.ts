@@ -83,6 +83,7 @@ export interface VoiceModelAdmin extends VoiceModel {
 export type F0Method = "pm" | "rmvpe" | "fcpe";
 export type OutputFormat = "mp3-320" | "wav";
 export type SeparationQuality = "fast" | "high";
+export type SeparationEngine = "demucs" | "mdx_net";
 
 export interface CoverRequest {
   media_id?: string;
@@ -96,6 +97,7 @@ export interface CoverRequest {
   output_format: OutputFormat;
   vocal_gain_db: number;
   quality: SeparationQuality;
+  separation_engine: SeparationEngine;
   instrumental_pitch: number;
 }
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { CoverRequest, F0Method, OutputFormat, SeparationQuality } from "@/lib/types";
+import type { CoverRequest, F0Method, OutputFormat, SeparationEngine, SeparationQuality } from "@/lib/types";
 
 export type ConversionParams = Omit<CoverRequest, "media_id" | "youtube_url" | "voice_model_id">;
 
@@ -13,6 +13,7 @@ export const DEFAULT_CONVERSION_PARAMS: ConversionParams = {
   output_format: "mp3-320",
   vocal_gain_db: 0,
   quality: "fast",
+  separation_engine: "demucs",
   instrumental_pitch: 0,
 };
 
@@ -26,6 +27,10 @@ const OUTPUT_FORMATS: OutputFormat[] = ["mp3-320", "wav"];
 const QUALITIES: { value: SeparationQuality; label: string }[] = [
   { value: "fast", label: "빠름" },
   { value: "high", label: "고품질" },
+];
+const SEPARATION_ENGINES: { value: SeparationEngine; label: string }[] = [
+  { value: "demucs", label: "Demucs" },
+  { value: "mdx_net", label: "UVR-MDX-NET (보컬 특화)" },
 ];
 
 export default function ConversionParamsForm({ value, onChange }: Props) {
@@ -62,25 +67,48 @@ export default function ConversionParamsForm({ value, onChange }: Props) {
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm font-medium">보컬/반주 분리 품질</label>
-        <p className="text-white/50 text-xs">고품질은 더 정확하지만 처리 시간이 더 걸립니다</p>
+        <label className="text-sm font-medium">보컬/반주 분리 엔진</label>
+        <p className="text-white/50 text-xs">UVR-MDX-NET은 보컬 분리 정확도가 높은 편이지만 CPU로 처리되어 더 느립니다</p>
         <div className="flex gap-2">
-          {QUALITIES.map((q) => (
+          {SEPARATION_ENGINES.map((e) => (
             <button
-              key={q.value}
+              key={e.value}
               type="button"
-              onClick={() => set("quality", q.value)}
+              onClick={() => set("separation_engine", e.value)}
               className={`rounded-md border px-3 py-1.5 text-xs ${
-                value.quality === q.value
+                value.separation_engine === e.value
                   ? "border-accent text-accent bg-accent/10"
                   : "border-white/10 text-white/70 hover:border-white/30"
               }`}
             >
-              {q.label}
+              {e.label}
             </button>
           ))}
         </div>
       </div>
+
+      {value.separation_engine === "demucs" && (
+        <div className="space-y-1">
+          <label className="text-sm font-medium">보컬/반주 분리 품질</label>
+          <p className="text-white/50 text-xs">고품질은 더 정확하지만 처리 시간이 더 걸립니다</p>
+          <div className="flex gap-2">
+            {QUALITIES.map((q) => (
+              <button
+                key={q.value}
+                type="button"
+                onClick={() => set("quality", q.value)}
+                className={`rounded-md border px-3 py-1.5 text-xs ${
+                  value.quality === q.value
+                    ? "border-accent text-accent bg-accent/10"
+                    : "border-white/10 text-white/70 hover:border-white/30"
+                }`}
+              >
+                {q.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="space-y-1">
         <label className="text-sm font-medium">피치 추출 방식 (f0_method)</label>

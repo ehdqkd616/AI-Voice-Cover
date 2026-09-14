@@ -36,6 +36,7 @@
 | `worker-download` | 유튜브 다운로드 (yt-dlp, CPU) |
 | `worker-separate-convert` | Demucs 분리 + RVC 변환 (GPU 하나를 `-c 1 -P solo`로 순차 처리 — 4GB VRAM에서 두 GPU 작업이 동시에 뜨는 걸 방지) |
 | `worker-dsp` | 믹스, 반주 피치 조절, 주기 작업(canary 헬스체크·만료 미디어 정리) |
+| `worker-mdx` | UVR-MDX-NET 분리 (CPU 전용, 독립된 이미지 — RVC 엔진과 torch/numpy 버전이 서로 맞지 않아 별도 컨테이너로 분리) |
 | `beat` | Celery beat 스케줄러 |
 | `postgres` / `redis` / `minio` | DB / 큐·캐시·진행률 pub-sub / 오브젝트 스토리지 |
 | `web` | Next.js 프론트엔드 |
@@ -89,7 +90,7 @@ docker compose exec -T api python tools/import_voice_models.py \
 - 파일 업로드 또는 유튜브 URL로 소스 음원 지정
 - 보이스 모델 선택 (관리자가 업로드/가져오기한 모델 목록에서)
 - 변환 설정: 보컬 피치, 피치 추출 방식(pm/rmvpe/fcpe), 인덱스 반영 비율, 보호 강도, 라우드니스 믹스 비율, 보컬 볼륨 보정, 출력 형식(mp3/wav)
-- 분리 품질 선택 (빠름/고품질 — Demucs 모델 티어)
+- 분리 엔진/품질 선택 — Demucs(빠름/고품질) 또는 UVR-MDX-NET(Kim_Vocal_2, CPU 전용 — 보컬 분리 정확도가 더 높은 편)
 - **반주(MR) 피치 조절** — 보컬 피치와 독립적으로 반주 자체의 키를 템포 유지한 채 변경
 - 계정별 작업 이력(`/library`) — 지금까지 만든 커버를 재생/다운로드/삭제
 - 관리자: 회원 승인, 보이스 모델 등록/재매칭/활성화 관리
@@ -99,7 +100,6 @@ docker compose exec -T api python tools/import_voice_models.py \
 - **RVC 모델의 목표 샘플레이트가 반주(Demucs, 44100Hz)와 다를 수 있어** 믹스 단계에서 항상 반주 기준으로 리샘플링합니다 — 이미 처리되어 있지만, 추가하는 보이스 모델이 늘어날수록 계속 정확히 맞는지 확인이 필요합니다.
 - 보컬/반주 길이 정렬은 패딩/트림 수준입니다 (DTW 등 정교한 재정렬은 하지 않음).
 - Demucs 분리 + RVC 변환이 한 컨테이너에서 순차 처리됩니다 (`worker-separate-convert`, GPU VRAM 제약 때문). 처리량이 부족해지면 컨테이너를 분리하고 Redis 기반 GPU 락 도입을 고려하세요.
-- 분리 알고리즘은 현재 Demucs만 지원합니다. UVR-MDX-NET 등 다른 소스 분리 모델 추가는 진행 중입니다.
 - 보이스 모델 삭제 시 DB row만 지워지고 `data/voice-models/`의 실제 파일은 남습니다 (다른 모델이나 재매칭이 같은 파일을 참조할 수 있어서 — 필요하면 수동으로 정리).
 
 ## 라이선스 관련

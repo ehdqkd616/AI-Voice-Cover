@@ -17,6 +17,9 @@ class CoverRequest(BaseModel):
     output_format: Literal["mp3-320", "wav"] = "mp3-320"
     vocal_gain_db: float = 0
     quality: Literal["fast", "high"] = "fast"
+    # "mdx_net" ignores `quality` (that's a Demucs-only knob) and instead
+    # runs UVR-MDX-NET (Kim_Vocal_2) in a dedicated CPU-only worker.
+    separation_engine: Literal["demucs", "mdx_net"] = "demucs"
     # Independent of f0_up_key (which only retunes the RVC-converted vocal) —
     # this transposes the instrumental/MR track itself, tempo-preserved.
     instrumental_pitch: int = Field(default=0, ge=-24, le=24)

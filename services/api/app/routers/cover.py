@@ -25,6 +25,7 @@ def _conversion_params(body: CoverRequest) -> dict:
         "output_format": body.output_format,
         "vocal_gain_db": body.vocal_gain_db,
         "quality": body.quality,
+        "separation_engine": body.separation_engine,
         "instrumental_pitch": body.instrumental_pitch,
     }
 
@@ -74,6 +75,8 @@ def create_cover(body: CoverRequest, current_user: User = Depends(require_user))
 
     if job.stage == "ingest":
         send_task("tasks.cover_ingest_youtube", args=[job.id], queue="download")
+    elif body.separation_engine == "mdx_net":
+        send_task("tasks.cover_separate_mdx", args=[job.id], queue="mdx")
     else:
         send_task("tasks.cover_separate", args=[job.id], queue="separate")
 

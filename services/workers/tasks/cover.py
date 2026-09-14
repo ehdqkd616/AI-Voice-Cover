@@ -42,6 +42,7 @@ from ..job_lifecycle import (
     scaled_progress,
 )
 from ..mix.mixer import mix as mix_audio
+from ..separation.mdx_separator import MODEL_FILENAME as MDX_MODEL_FILENAME, separate_mdx
 from ..separation.separator import load_model, save_stem, separate
 
 MIME_TYPES = {"mp3": "audio/mpeg", "wav": "audio/wav", "m4a": "audio/mp4"}
@@ -114,7 +115,11 @@ def cover_ingest_youtube(self, job_id: str) -> dict:
         )
 
         mark_progress(job_id, scaled_progress("ingest", 100), "downloading")
-        advance_stage(job_id, "separate", {"media_id": media_id}, "tasks.cover_separate", "separate")
+        separation_engine = params.get("separation_engine", "demucs")
+        if separation_engine == "mdx_net":
+            advance_stage(job_id, "separate", {"media_id": media_id}, "tasks.cover_separate_mdx", "mdx")
+        else:
+            advance_stage(job_id, "separate", {"media_id": media_id}, "tasks.cover_separate", "separate")
         return {"media_id": media_id}
 
     except Exception as exc:
@@ -210,6 +215,92 @@ def cover_separate(self, job_id: str) -> dict:
     except Exception as exc:
         code = "GPU_OOM" if "out of memory" in str(exc).lower() else "EXTRACTION_FAILED"
         mark_failed(job_id, code, str(exc))
+        raise
+    finally:
+        shutil.rmtree(work_dir, ignore_errors=True)
+
+
+@app.task(name="tasks.cover_separate_mdx", bind=True, max_retries=1)
+def cover_separate_mdx(self, job_id: str) -> dict:
+    """UVR-MDX-NET counterpart to cover_separate — runs in the isolated
+    worker-mdx container (see services/workers/Dockerfile.mdx), CPU-only.
+    Mirrors cover_separate's shape/caching/lineage exactly so cover_convert
+    downstream can't tell which engine produced the stems."""
+    with session_scope() as db:
+        job = db.get(Job, job_id)
+        params = dict(job.params)
+        user_id = job.user_id
+        media = db.get(Media, params["media_id"])
+        source_hash = media.content_hash
+        storage_key = media.storage_key
+        source_title = media.title
+        source_artist = media.artist
+
+    model_name = f"mdx-{MDX_MODEL_FILENAME}"
+    stems = 2
+
+    mark_running(job_id)
+
+    cache_key = l2_key(source_hash, model_name, stems)
+    cached = cache_get(cache_key)
+    if cached and cached.get("vocals_media_id") and cached.get("instrumental_media_id"):
+        mark_progress(job_id, scaled_progress("separate", 100), "separating")
+        advance_stage(
+            job_id,
+            "convert",
+            {
+                "vocals_media_id": cached["vocals_media_id"],
+                "instrumental_media_id": cached["instrumental_media_id"],
+            },
+            "tasks.cover_convert",
+            "convert",
+        )
+        return cached
+
+    work_dir = tempfile.mkdtemp(prefix="sepmdx_")
+    try:
+        local_src = os.path.join(work_dir, "source")
+        download_file(storage_key, local_src)
+        wav_src = ensure_wav(local_src)
+
+        mark_progress(job_id, scaled_progress("separate", 5), "separating")
+        out_dir = os.path.join(work_dir, "out")
+        os.makedirs(out_dir, exist_ok=True)
+        stem_paths = separate_mdx(wav_src, out_dir)
+        mark_progress(job_id, scaled_progress("separate", 80), "separating")
+
+        output_ids: dict[str, str] = {}
+        for stem_name, local_out in stem_paths.items():
+            stem_key = f"separated/{source_hash}/{model_name}/{stem_name}.wav"
+            upload_file(local_out, stem_key, "audio/wav")
+
+            media_id = register_media(
+                kind="stem",
+                source_type="derived",
+                parent_id=params["media_id"],
+                content_hash=f"{source_hash}:{model_name}:{stem_name}",
+                storage_key=stem_key,
+                mime_type="audio/wav",
+                size_bytes=os.path.getsize(local_out),
+                title=source_title,
+                artist=source_artist,
+                lineage={"op": "separate", "model": model_name, "stem": stem_name, "stems": stems},
+                user_id=user_id,
+            )
+            output_ids[stem_name] = media_id
+
+        cache_payload = {
+            "vocals_media_id": output_ids.get("vocals"),
+            "instrumental_media_id": output_ids.get("instrumental"),
+        }
+        cache_set(cache_key, cache_payload, L2_TTL)
+
+        mark_progress(job_id, scaled_progress("separate", 100), "separating")
+        advance_stage(job_id, "convert", cache_payload, "tasks.cover_convert", "convert")
+        return cache_payload
+
+    except Exception as exc:
+        mark_failed(job_id, "EXTRACTION_FAILED", str(exc))
         raise
     finally:
         shutil.rmtree(work_dir, ignore_errors=True)
