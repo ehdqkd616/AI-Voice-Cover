@@ -119,8 +119,12 @@ services:
   # cover request. Deliberately its own image/container: audio-separator
   # pulls in a much newer torch than the RVC engine is pinned against
   # (requirements-mdx.txt), so it can't share worker-separate-convert's
-  # environment, and it runs CPU-only (no GPU reservation) so it never
-  # competes with Demucs/RVC for the host's single 4GB GPU.
+  # environment. CPU-only, deliberately — GPU was tested and rejected: this
+  # host's Pascal-generation GPU is past the support window of both
+  # onnxruntime-gpu's current CUDA-13 build and the newer torch that
+  # audio-separator's own dependencies pull in (see requirements-mdx.txt for
+  # the full story). No GPU reservation, so it never competes with
+  # worker-separate-convert for the host's single 4GB GPU either way.
   worker-mdx:
     build: { context: ., dockerfile: services/workers/Dockerfile.mdx }
     env_file: .env

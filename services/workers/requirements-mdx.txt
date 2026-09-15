@@ -14,8 +14,18 @@
 # This is a fully self-contained requirements file — every package this
 # container needs, not just the MDX-specific ones.
 #
-# CPU-only (onnxruntime, not onnxruntime-gpu) — this container never
-# competes with worker-separate-convert for the host's single 4GB GPU.
+# CPU-only (onnxruntime, not onnxruntime-gpu) — deliberately, not just for
+# lack of trying. GPU was tested and rejected: onnxruntime-gpu's current
+# release targets CUDA 13, which dropped kernel support for this host's
+# Pascal-generation GPU (GTX 1050 Ti, SM 6.1); pinning an older CUDA-12
+# onnxruntime-gpu build works for provider *activation*, but audio-separator's
+# transitive dependency on onnx2torch-py313 forces torch to a version that's
+# ALSO past Pascal's support window, so actual inference (torch.stft) fails
+# with "no kernel image is available for execution on the device" regardless.
+# Fixing this would mean hand-pinning several transitive deps below what
+# audio-separator's own dependency floor wants — fragile, likely to break on
+# any audio-separator update. Not worth it for a personal deployment where
+# CPU (~20s-2min per song, measured) is already fine.
 --extra-index-url https://download.pytorch.org/whl/cpu
 torch==2.14.0+cpu
 audio-separator==0.47.0
