@@ -48,6 +48,19 @@ class Settings(BaseSettings):
     admin_email: str = ""
     admin_password: str = ""
 
+    # 회원가입 시 승인 요청 메일 (비워두면 발송 안 함). Gmail이면 앱 비밀번호를 쓴다.
+    admin_notify_emails: str = ""  # 쉼표로 여러 명
+    smtp_host: str = "smtp.gmail.com"
+    smtp_port: int = 587  # 587=STARTTLS, 465=SSL
+    smtp_user: str = ""
+    smtp_password: str = ""
+    smtp_from: str = ""  # 비우면 smtp_user
+    public_web_url: str = "http://localhost:3010"  # 메일 속 "관리자 페이지" 링크용
+
+    @property
+    def admin_notify_email_list(self) -> list[str]:
+        return [e.strip() for e in self.admin_notify_emails.split(",") if e.strip()]
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Request, Response
 from sqlalchemy import select
 
 from common.db.models import User
@@ -6,6 +6,7 @@ from common.db.session import SessionLocal
 
 from ..deps import get_current_user
 from ..errors import ApiError
+from ..notify import send_signup_notification
 from ..schemas.auth import LoginRequest, MeResponse, SignupRequest, UserResponse
 from ..security import hash_password, verify_password
 from ..session_store import SESSION_COOKIE_NAME, SESSION_TTL_SEC, create_session, delete_session
@@ -36,7 +37,7 @@ def _to_user_response(user: User) -> UserResponse:
 
 
 @router.post("/signup", response_model=UserResponse)
-def signup(body: SignupRequest) -> UserResponse:
+def signup(body: SignupRequest, background_tasks: BackgroundTasks) -> UserResponse:
     """가입만 해두고 세션은 만들지 않는다 — 관리자 승인 전에는 로그인할 수 없다."""
     db = SessionLocal()
     try:
@@ -50,6 +51,8 @@ def signup(body: SignupRequest) -> UserResponse:
     finally:
         db.close()
 
+    # 응답을 보낸 뒤 발송 — SMTP가 느리거나 실패해도 가입은 그대로 성공한다.
+    background_tasks.add_task(send_signup_notification, user.email, user.created_at)
     return _to_user_response(user)
 
 
