@@ -36,7 +36,7 @@
 |---|---|
 | `api` | FastAPI. 인증/관리자/업로드/유튜브 정보 조회/커버 요청/Job 상태(SSE)/미디어 스트리밍·다운로드 프록시 |
 | `worker-download` | 유튜브 다운로드 (yt-dlp, CPU) |
-| `worker-separate-convert` | Demucs 분리 + RVC 변환 (GPU 하나를 `-c 1 -P solo`로 순차 처리 — 4GB VRAM에서 두 GPU 작업이 동시에 뜨는 걸 방지) |
+| `worker-separate-convert` | Demucs 분리 + RVC 변환 + **보이스 모델 학습** (GPU 하나를 `-c 1 -P solo`로 순차 처리 — 4GB VRAM에서 GPU 작업이 동시에 뜨는 걸 방지) |
 | `worker-dsp` | 믹스, 반주 피치 조절, 주기 작업(canary 헬스체크·만료 미디어 정리) |
 | `worker-mdx` | UVR-MDX-NET 분리 (CPU 전용, 독립된 이미지 — RVC 엔진과 torch/numpy 버전이 서로 맞지 않아 별도 컨테이너로 분리) |
 | `beat` | Celery beat 스케줄러 |
@@ -87,6 +87,35 @@ docker compose exec -T api python tools/import_voice_models.py \
 
 `.pth`와 `.index`는 파일명 기준으로 최대한 자동 매칭되고, 매칭 결과는 확신도(`auto_high` / `auto_low` / `unpaired`)로 콘솔에 요약 출력됩니다. `auto_low`/`unpaired`로 표시된 모델은 `/admin/models`에서 인덱스를 수동으로 재매칭하거나 그대로(인덱스 없이) 사용할 수 있습니다.
 
+## 보이스 모델 학습
+
+관리자는 `/train`(헤더의 "보이스 학습")에서 새 목소리를 직접 학습시킬 수 있습니다. RVC-Learning의 WebUI는 데이터 경로 입력 → 전처리 → 특징 추출 → 학습 → 인덱스 → 모델 파일 정리를 단계마다 버튼으로 눌러야 했지만, 여기서는 **음원을 올리고 이름만 정하면 끝까지 자동**으로 진행되고 완성된 모델이 바로 보이스 모델 목록에 등록됩니다.
+
+- **음원 그대로 업로드** — 여러 파일 드래그 앤 드롭. "보컬 자동 추출"을 켜면 반주가 섞인 노래 원곡도 Demucs로 목소리만 뽑아서 학습에 씁니다.
+- **데이터 분량 안내** — 올린 총 분량을 보고 너무 짧음/권장 분량 등을 바로 알려줍니다 (최소 1분, 권장 10~30분).
+- **학습 강도 프리셋** — 빠른 테스트(50) / 표준(200) / 고품질(400) epoch. 고급 설정에서 epoch·batch size·샘플레이트(40k/48k) 직접 지정 가능.
+- **진행 상황 실시간 표시** — 5단계 진행 표시, 현재 epoch와 남은 시간(ETA), 상세 로그. 페이지를 닫아도 서버에서 계속 진행됩니다.
+- **GPU 메모리 자동 대응** — 학습 전에 커버 워커가 들고 있던 모델 캐시를 비우고, 그래도 메모리가 부족(OOM)하면 batch size를 절반씩 줄여 마지막 체크포인트부터 자동으로 이어서 학습합니다.
+- **중지 / 기록 삭제**, 완료 후 **"이 목소리로 커버 만들기"** 바로가기.
+
+내부적으로는 RVC-Learning의 학습 스크립트(`train/preprocess.py`, `extract_f0.py`, `extract_hubert_feature.py`, `train.py`, `train_index.py`)를 `services/workers/rvc_engine/train/`에 그대로 이식해서 WebUI와 같은 방식(서브프로세스)으로 실행합니다 — 오케스트레이션은 `services/workers/training/pipeline.py`, Celery 태스크는 `tasks.train_voice_model`(큐 `train`).
+
+학습 중에는 GPU를 학습이 쓰기 때문에, 그 사이 요청한 커버 만들기는 학습이 끝날 때까지 대기열에서 기다립니다. 이 호스트의 GTX 1050 Ti(4GB, Pascal)는 fp32로 학습하며, 학습에는 **여유 VRAM이 약 2.5GB 이상** 필요합니다 (batch size 2 기준, 모델 가중치+옵티마이저만 ~1.65GB). 같은 GPU를 쓰는 다른 프로젝트 워커(Music-Tools 분리 워커 ~0.8GB, image-tools upscale ~0.8GB)가 VRAM을 잡고 있으면 batch 1에서도 OOM이 나므로, 학습 전에 잠시 멈췄다가 끝나면 다시 켜주세요:
+
+```bash
+docker stop music-tools-worker-separate-1 image-tools-worker-1   # 학습 전
+docker start music-tools-worker-separate-1 image-tools-worker-1  # 학습 후
+```
+
+**준비물** — 학습에 쓰는 사전학습 모델(G/D)은 용량(D 파일 137MB) 때문에 저장소에 없습니다. `data/rvc-pretrained/`에 넣어두세요:
+
+```bash
+mkdir -p data/rvc-pretrained
+cp /path/to/RVC-Learning/Retrieval-based-Voice-Conversion-WebUI-main/assets/pretrained_v2/f0{G,D}{40k,48k}.pth data/rvc-pretrained/
+```
+
+학습 중간 파일(데이터셋, 슬라이스, 특징, 체크포인트)은 `data/training/<실험명>/`에 쌓이고, 완성된 모델은 `data/voice-models/weights/`·`indices/`에 바로 저장됩니다. 학습 기록을 삭제하면 중간 파일만 지워지고 등록된 모델은 남습니다.
+
 ## 주요 기능
 
 - 파일 업로드 또는 유튜브 URL로 소스 음원 지정
@@ -95,6 +124,7 @@ docker compose exec -T api python tools/import_voice_models.py \
 - 분리 엔진/품질 선택 — Demucs(빠름/고품질) 또는 UVR-MDX-NET(Kim_Vocal_2, CPU 전용 — 보컬 분리 정확도가 더 높은 편)
 - **반주(MR) 피치 조절** — 보컬 피치와 독립적으로 반주 자체의 키를 템포 유지한 채 변경
 - 계정별 작업 이력(`/library`) — 지금까지 만든 커버를 재생/다운로드/삭제
+- **보이스 모델 학습**(`/train`) — 음원만 올리면 보컬 추출부터 모델 등록까지 자동 (위 섹션 참고)
 - 관리자: 회원 승인, 보이스 모델 등록/재매칭/활성화 관리
 
 ## 알려진 제약 · 다음에 할 만한 것

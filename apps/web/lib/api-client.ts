@@ -4,6 +4,9 @@ import type {
   JobCreatedResponse,
   JobStatusResponse,
   LibraryItem,
+  TrainingJob,
+  TrainingLog,
+  TrainingRequest,
   MeResponse,
   UploadResponse,
   User,
@@ -119,6 +122,22 @@ export const api = {
     request<{ deleted: string }>(`/api/v1/media/${mediaId}`, { method: "DELETE" }),
 
   library: () => request<LibraryItem[]>("/api/v1/library"),
+
+  trainingList: () => request<TrainingJob[]>("/api/v1/training"),
+
+  trainingStart: (body: TrainingRequest) =>
+    request<TrainingJob>("/api/v1/training", { method: "POST", body: JSON.stringify(body) }),
+
+  trainingGet: (jobId: string) => request<TrainingJob>(`/api/v1/training/${jobId}`),
+
+  trainingLog: (jobId: string, lines = 200) =>
+    request<TrainingLog>(`/api/v1/training/${jobId}/log?lines=${lines}`),
+
+  trainingCancel: (jobId: string) =>
+    request<TrainingJob>(`/api/v1/training/${jobId}/cancel`, { method: "POST" }),
+
+  trainingDelete: (jobId: string) =>
+    request<{ deleted: string }>(`/api/v1/training/${jobId}`, { method: "DELETE" }),
 
   deleteLibraryItem: (jobId: string) =>
     request<{ deleted: string; cascaded: number }>(`/api/v1/library/${jobId}`, { method: "DELETE" }),

@@ -21,3 +21,14 @@ next-env.d.ts
 # Dockerfile.gpu image; see README's "Setup" section.
 /services/workers/rvc_engine/assets/hubert_base/pytorch_model.bin
 /services/workers/rvc_engine/assets/rmvpe/rmvpe.pt
+
+# Voice-model training: experiment dirs (dataset, slices, features,
+# checkpoints — easily several GB each) and the pretrained G/D bases
+# (137MB D files exceed GitHub's 100MB limit). See README "보이스 모델 학습".
+/data/training/
+/data/rvc-pretrained/
+# Mount points docker creates inside the bind-mounted services/workers tree
+# for those same three paths (see docker-compose.yml worker-separate-convert).
+/services/workers/rvc_engine/logs/
+/services/workers/rvc_engine/assets/weights/
+/services/workers/rvc_engine/assets/pretrained_v2/

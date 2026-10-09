@@ -55,6 +55,7 @@ services:
       - ./services/api/alembic:/srv/alembic
       - ./services/common:/srv/common
       - ./data/voice-models:/srv/models
+      - ./data/training:/srv/training
 
   # worker-download/worker-dsp/beat share the identical Dockerfile — pin them
   # to the same image name so `docker compose build` builds it once instead
@@ -74,15 +75,19 @@ services:
       - ./services/workers:/srv/workers
       - ./services/common:/srv/common
 
-  # Demucs separation + RVC voice conversion share one GPU-bound container so
-  # the two heaviest jobs on this host's single 4GB GTX 1050 Ti can never run
-  # concurrently (-P solo -c 1, consuming both queues). Split into two
+  # Demucs separation + RVC voice conversion + voice-model training share one
+  # GPU-bound container so the heavy jobs on this host's single 4GB GTX 1050 Ti
+  # can never run concurrently (-P solo -c 1, consuming all three queues) — a
+  # cover requested while a model is training simply waits its turn. Split into two
   # containers (+ a Redis GPU mutex) later if throughput ever demands it.
   worker-separate-convert:
     build: { context: ., dockerfile: services/workers/Dockerfile.gpu }
     env_file: .env
-    command: celery -A workers.celery_app worker -Q separate,convert -c 1 -P solo --loglevel=INFO
+    command: celery -A workers.celery_app worker -Q separate,convert,train -c 1 -P solo --loglevel=INFO
     restart: unless-stopped
+    # train.py's DataLoader (num_workers=4) passes batches through shared
+    # memory; Docker's 64MB /dev/shm default kills its workers with SIGBUS.
+    shm_size: "2gb"
     deploy:
       resources:
         reservations:
@@ -100,6 +105,16 @@ services:
       - demucs-models:/root/.cache/torch
       - hf-cache:/root/.cache/huggingface
       - ./data/voice-models:/srv/models
+      # Voice-model training (queue `train`). The vendored RVC scripts resolve
+      # everything relative to their own root (`./logs/<exp>`,
+      # `assets/weights/<name>.pth`, `assets/pretrained_v2/...`), so these
+      # three paths are bind-mounted straight into rvc_engine/: experiments
+      # live in ./data/training, finished models land directly in the same
+      # weights dir the cover pipeline reads from, and the large pretrained
+      # G/D bases stay out of git (see README "보이스 모델 학습").
+      - ./data/training:/srv/workers/rvc_engine/logs
+      - ./data/voice-models/weights:/srv/workers/rvc_engine/assets/weights
+      - ./data/rvc-pretrained:/srv/workers/rvc_engine/assets/pretrained_v2
 
   worker-dsp:
     build: { context: ., dockerfile: services/workers/Dockerfile }

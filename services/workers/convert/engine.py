@@ -137,3 +137,11 @@ def convert_vocal(
     if sr is None or audio is None:
         raise RuntimeError(f"RVC conversion failed: {status}")
     return sr, audio
+
+
+def release_models() -> None:
+    """Drop every cached VC (net_g + its HuBERT/RMVPE) so their VRAM can go to
+    another GPU consumer in a separate process — voice-model training, which
+    runs as subprocesses from this same worker. The next cover conversion
+    simply reloads (a few seconds)."""
+    _VC_CACHE.clear()

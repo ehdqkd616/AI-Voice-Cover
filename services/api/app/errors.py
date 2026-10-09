@@ -26,6 +26,8 @@ ERROR_TABLE: dict[str, tuple[int, bool]] = {
     "NOT_AUTHENTICATED": (401, False),
     "PENDING_APPROVAL": (403, False),
     "FORBIDDEN": (403, False),
+    "NAME_TAKEN": (409, False),
+    "TRAINING_ACTIVE": (409, False),
 }
 
 

@@ -15,7 +15,19 @@ BACKOFF_SEC = [2, 8, 32]
 # 0-100 percent into this range so the SSE progress bar moves monotonically
 # across the whole ingest -> separate -> convert -> mix pipeline instead of
 # resetting to 0 at the start of every stage.
-STAGE_RANGE = {"ingest": (0, 10), "separate": (10, 45), "convert": (45, 80), "mix": (80, 100)}
+STAGE_RANGE = {
+    # cover pipeline
+    "ingest": (0, 10),
+    "separate": (10, 45),
+    "convert": (45, 80),
+    "mix": (80, 100),
+    # voice-model training (tasks/train.py) — training itself dominates wall time
+    "prepare": (0, 10),
+    "preprocess": (10, 15),
+    "extract": (15, 30),
+    "train": (30, 97),
+    "index": (97, 100),
+}
 
 
 def scaled_progress(stage: str, local_percent: float) -> float:

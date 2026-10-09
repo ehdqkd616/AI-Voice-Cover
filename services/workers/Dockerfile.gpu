@@ -43,4 +43,4 @@ RUN python -c "from demucs.pretrained import get_model; get_model('htdemucs')"
 # (e.g. a bare `python -m ...` smoke test run outside Docker).
 WORKDIR /srv/workers/rvc_engine
 
-CMD ["celery", "-A", "workers.celery_app", "worker", "-Q", "separate,convert", "-c", "1", "-P", "solo", "--loglevel=INFO"]
+CMD ["celery", "-A", "workers.celery_app", "worker", "-Q", "separate,convert,train", "-c", "1", "-P", "solo", "--loglevel=INFO"]

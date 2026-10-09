@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ConversionParamsForm, {
   ConversionParams,
   DEFAULT_CONVERSION_PARAMS,
@@ -27,6 +27,14 @@ export default function HomePage() {
   const [jobId, setJobId] = useState<string | null>(null);
   const [finalMediaId, setFinalMediaId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  // "/?voice=<id>" — the "이 목소리로 커버 만들기" link from a finished training.
+  // Read once from window.location rather than useSearchParams, which would
+  // force a Suspense boundary around this whole client page.
+  useEffect(() => {
+    const voice = new URLSearchParams(window.location.search).get("voice");
+    if (voice) setVoiceModelId(voice);
+  }, []);
 
   function reset() {
     setStep("source");

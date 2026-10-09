@@ -112,3 +112,44 @@ export interface LibraryItem {
   output_format: string | null;
   created_at: string;
 }
+
+export type TrainingStage = "prepare" | "preprocess" | "extract" | "train" | "index";
+
+export interface TrainingRequest {
+  name: string;
+  description?: string;
+  media_ids: string[];
+  auto_vocal: boolean;
+  epochs: number;
+  batch_size: number;
+  sample_rate: "40k" | "48k";
+}
+
+export interface TrainingJob {
+  job_id: string;
+  name: string;
+  description: string | null;
+  status: "queued" | "running" | "succeeded" | "failed";
+  stage: TrainingStage;
+  progress: number;
+  epochs: number;
+  current_epoch: number;
+  eta_sec: number | null;
+  sample_rate: string;
+  batch_size: number;
+  effective_batch_size: number | null;
+  auto_vocal: boolean;
+  file_count: number;
+  dataset_seconds: number | null;
+  voice_model_id: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  queued_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface TrainingLog {
+  stage: TrainingStage;
+  lines: string[];
+}

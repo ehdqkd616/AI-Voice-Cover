@@ -77,3 +77,8 @@ def save_stem(tensor, path: str, sample_rate: int) -> None:
     import torchaudio
 
     torchaudio.save(path, tensor.cpu(), sample_rate)
+
+
+def release_models() -> None:
+    """Counterpart to convert.engine.release_models() for the Demucs cache."""
+    _MODEL_CACHE.clear()

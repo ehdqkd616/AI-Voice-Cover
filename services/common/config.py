@@ -41,6 +41,10 @@ class Settings(BaseSettings):
     rvc_default_protect: float = 0.33
     rvc_default_rms_mix_rate: float = 0.25
 
+    # Where the api container sees voice-model training experiments
+    # (./data/training, bind-mounted) — for log tails and cleanup.
+    training_root: str = "/srv/training"
+
     mix_default_output_format: str = "mp3-320"
     mix_default_vocal_gain_db: float = 0.0
 

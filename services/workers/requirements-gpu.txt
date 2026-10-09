@@ -21,3 +21,10 @@ scikit-learn>=1.6,<2
 # (Part B's "reconcile any gap you find" instruction) and confirmed missing
 # from requirements.txt/requirements-gpu.txt as drafted.
 ffmpeg-python>=0.2.0,<1
+
+# Voice-model training (services/workers/rvc_engine/train/, driven by
+# services/workers/training/pipeline.py). train.py logs through
+# torch.utils.tensorboard.SummaryWriter and train/utils.py imports matplotlib
+# for spectrogram plots — neither is used by inference, hence added separately.
+tensorboard>=2.17,<3
+matplotlib>=3.8,<4

@@ -18,9 +18,14 @@ export default function SiteHeader() {
                 내 작업
               </a>
               {user.is_admin && (
-                <a href="/admin" className="hover:text-white whitespace-nowrap">
-                  관리자
-                </a>
+                <>
+                  <a href="/train" className="hover:text-white whitespace-nowrap">
+                    보이스 학습
+                  </a>
+                  <a href="/admin" className="hover:text-white whitespace-nowrap">
+                    관리자
+                  </a>
+                </>
               )}
               <span className="text-white/40 truncate max-w-[8rem] sm:max-w-[10rem]">{user.email}</span>
               <button onClick={logout} className="hover:text-white whitespace-nowrap">

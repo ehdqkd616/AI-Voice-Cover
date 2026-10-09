@@ -1,1 +1,1 @@
-from . import cover, maintenance  # noqa: F401 — registers tasks with Celery
+from . import cover, maintenance, train  # noqa: F401 — registers tasks with Celery

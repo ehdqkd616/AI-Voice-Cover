@@ -7,7 +7,7 @@ from common.db.models import User
 from common.db.session import SessionLocal
 from common.storage import ensure_bucket
 from .errors import ApiError, api_error_handler
-from .routers import admin, auth, cover, jobs, library, media, upload, voice_models, youtube
+from .routers import admin, auth, cover, jobs, library, media, training, upload, voice_models, youtube
 from .security import hash_password
 
 settings = get_settings()
@@ -36,6 +36,7 @@ app.include_router(cover.router, prefix="/api/v1/cover", tags=["cover"])
 app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 app.include_router(media.router, prefix="/api/v1/media", tags=["media"])
 app.include_router(library.router, prefix="/api/v1/library", tags=["library"])
+app.include_router(training.router, prefix="/api/v1/training", tags=["training"])
 
 
 def _bootstrap_admin() -> None:
