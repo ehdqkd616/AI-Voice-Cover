@@ -1,5 +1,7 @@
 # AI Voice Cover
 
+> 🔗 **배포 주소:** https://ai-voice-cover.hotgarlic.dedyn.io
+
 노래 음원(파일 업로드 또는 유튜브 URL)을 업로드하고, 보이스 모델과 몇 가지 설정값만 고르면 **보컬/반주 분리 → 보이스 변환(RVC) → 믹스**까지 전 과정을 서버에서 자동으로 처리해서 완성된 커버 음원을 다운로드까지 할 수 있는 셀프 호스팅 웹 앱입니다.
 
 - 백엔드/인프라 구조는 [Music-Tools](../Music-Tools) (FastAPI + Celery + Postgres + Redis + MinIO, 쿠키 세션 인증 + 관리자 승인제)를 그대로 따릅니다.
