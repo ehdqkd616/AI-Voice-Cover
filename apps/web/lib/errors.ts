@@ -26,6 +26,7 @@ const ERROR_MESSAGES: Record<string, string> = {
   TRAINING_ACTIVE: "진행 중인 학습은 먼저 중지해야 합니다.",
   CANCELLED: "학습을 중지했습니다.",
   TRAIN_DATASET_TOO_SHORT: "학습 데이터가 너무 짧습니다. 목소리가 최소 1분, 권장 10분 이상 필요합니다.",
+  TRAIN_NO_CHECKPOINT: "이어서 학습할 체크포인트가 남아 있지 않습니다.",
   TRAIN_OOM: "GPU 메모리가 부족합니다. 다른 GPU 프로그램을 멈춘 뒤 다시 시도해주세요.",
   TRAIN_ASSETS_MISSING: "서버에 학습용 사전학습 모델 파일이 없습니다. 관리자 설정을 확인해주세요.",
   VOICE_MODEL_NOT_FOUND: "선택한 보이스 모델을 더 이상 사용할 수 없습니다. 다른 모델을 선택해주세요.",

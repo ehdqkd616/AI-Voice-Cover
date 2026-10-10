@@ -3,12 +3,19 @@ model registry). The work happens in the worker's tasks.train_voice_model;
 this router creates/inspects/cancels those jobs and serves their log tails
 from ./data/training (mounted at settings.training_root)."""
 
+import os
+import re
 import shutil
+import tempfile
+import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, Query
+from fastapi.responses import FileResponse
 from sqlalchemy import select
+from starlette.background import BackgroundTask
 
 from common.celery_client import send_task
 from common.config import get_settings
@@ -19,7 +26,12 @@ from common.redis_client import get_redis
 from ..deps import require_admin
 from ..errors import ApiError
 from ..job_utils import create_job
-from ..schemas.training import TrainingJobResponse, TrainingLogResponse, TrainingRequest
+from ..schemas.training import (
+    TrainingJobResponse,
+    TrainingLogResponse,
+    TrainingRequest,
+    TrainingResumeRequest,
+)
 
 router = APIRouter()
 
@@ -37,6 +49,47 @@ STAGE_LOG = {
 
 def _cancel_key(job_id: str) -> str:
     return f"train:cancel:{job_id}"  # must match workers/tasks/train.py
+
+
+def _exp_dir(job: Job) -> Path | None:
+    exp_name = (job.params or {}).get("exp_name")
+    return Path(get_settings().training_root) / exp_name if exp_name else None
+
+
+def _has_checkpoint(job: Job) -> bool:
+    """Same files the worker's resume path needs (tasks/train.py): the
+    latest G/D checkpoint train.py's -l 1 keeps, plus the extracted features
+    and filelist so preprocessing can be skipped."""
+    exp = _exp_dir(job)
+    return bool(
+        exp
+        and (exp / "G_2333333.pth").is_file()
+        and (exp / "D_2333333.pth").is_file()
+        and (exp / "filelist.txt").is_file()
+        and (exp / "3_feature768").is_dir()
+    )
+
+
+def _weight_path(job: Job) -> Path | None:
+    exp_name = (job.params or {}).get("exp_name")
+    path = Path(get_settings().rvc_weight_root) / f"{exp_name}.pth" if exp_name else None
+    return path if path and path.is_file() else None
+
+
+def _index_path(db, job: Job) -> Path | None:
+    """The registered model's index if there is one, else the newest one the
+    job built in its experiment dir."""
+    vm_id = (job.params or {}).get("voice_model_id")
+    vm = db.get(VoiceModel, vm_id) if vm_id else None
+    if vm and vm.index_filename:
+        path = Path(get_settings().rvc_index_root) / vm.index_filename
+        if path.is_file():
+            return path
+    exp = _exp_dir(job)
+    if not exp or not exp.is_dir():
+        return None
+    built = sorted(exp.glob("added_IVF*_Flat_nprobe_*.index"), key=lambda p: p.stat().st_mtime)
+    return built[-1] if built else None
 
 
 def _to_response(job: Job) -> TrainingJobResponse:
@@ -63,6 +116,10 @@ def _to_response(job: Job) -> TrainingJobResponse:
         queued_at=job.queued_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
+        checkpoint_epoch=p.get("checkpoint_epoch"),
+        has_checkpoint=job.status not in ACTIVE and _has_checkpoint(job),
+        has_model_file=_weight_path(job) is not None,
+        resume_count=int(p.get("resume_count", 0)),
     )
 
 
@@ -179,6 +236,105 @@ def cancel_training(job_id: str, current_user: User = Depends(require_admin)) ->
         return _to_response(job)
     finally:
         db.close()
+
+
+@router.post("/{job_id}/resume", response_model=TrainingJobResponse)
+def resume_training(
+    job_id: str, body: TrainingResumeRequest, current_user: User = Depends(require_admin)
+) -> TrainingJobResponse:
+    """Continues a finished/stopped job from its last checkpoint for
+    `extra_epochs` more epochs (the registered model is updated in place),
+    or — for a job that failed before any checkpoint — reruns it from the
+    start with its original settings."""
+    db = SessionLocal()
+    try:
+        job = _get_train_job(db, job_id)
+        if job.status in ACTIVE:
+            raise ApiError("TRAINING_ACTIVE", "이미 진행 중인 학습입니다.")
+        p = dict(job.params or {})
+        resume_from_checkpoint = _has_checkpoint(job)
+        if resume_from_checkpoint:
+            base = int(p.get("checkpoint_epoch") or p.get("current_epoch") or 0)
+            p["epochs"] = base + body.extra_epochs
+            stage = "train"
+        elif job.status == "succeeded":
+            raise ApiError("TRAIN_NO_CHECKPOINT", "이어서 학습할 체크포인트가 남아 있지 않습니다.")
+        else:
+            stage = "prepare"
+        if body.batch_size is not None:
+            p["batch_size"] = body.batch_size
+        elif p.get("effective_batch_size"):
+            p["batch_size"] = int(p["effective_batch_size"])
+        p.update(
+            resume=resume_from_checkpoint,
+            resume_count=int(p.get("resume_count", 0)) + 1,
+            eta_sec=None,
+            effective_batch_size=p["batch_size"],
+        )
+        job.params = p
+        job.status = "queued"
+        job.stage = stage
+        job.error_code = None
+        job.error_message = None
+        job.attempts = 0
+        job.queued_at = datetime.now(timezone.utc)
+        job.started_at = None
+        job.finished_at = None
+        get_redis().delete(_cancel_key(job_id))  # a stale stop request must not kill the new run
+        db.commit()
+        db.refresh(job)
+        response = _to_response(job)
+    finally:
+        db.close()
+
+    send_task("tasks.train_voice_model", args=[job_id], queue="train")
+    return response
+
+
+def _download_name(job: Job) -> str:
+    name = (job.params or {}).get("name") or (job.params or {}).get("exp_name") or "voice-model"
+    return re.sub(r'[\\/:*?"<>|\s]+', "_", name).strip("_") or "voice-model"
+
+
+@router.get("/{job_id}/download/{kind}")
+def download_model(
+    job_id: str,
+    kind: Literal["zip", "weight", "index"],
+    current_user: User = Depends(require_admin),
+) -> FileResponse:
+    """The trained model in the usual RVC sharing layout: <name>.pth (+
+    <name>.index), or both in one zip — loadable as-is by the RVC webui and
+    by this app's admin model upload."""
+    db = SessionLocal()
+    try:
+        job = _get_train_job(db, job_id)
+        weight, index = _weight_path(job), _index_path(db, job)
+        name = _download_name(job)
+    finally:
+        db.close()
+
+    if weight is None:
+        raise ApiError("NOT_FOUND", "학습된 모델 파일이 아직 없습니다.", {"job_id": job_id})
+    if kind == "weight":
+        return FileResponse(weight, media_type="application/octet-stream", filename=f"{name}.pth")
+    if kind == "index":
+        if index is None:
+            raise ApiError("NOT_FOUND", "인덱스 파일이 없습니다.", {"job_id": job_id})
+        return FileResponse(index, media_type="application/octet-stream", filename=f"{name}.index")
+
+    fd, tmp = tempfile.mkstemp(prefix="model_", suffix=".zip")
+    os.close(fd)
+    # .pth/.index barely compress — store them as-is so the zip is instant.
+    with zipfile.ZipFile(tmp, "w", zipfile.ZIP_STORED) as zf:
+        zf.write(weight, f"{name}.pth")
+        if index is not None:
+            zf.write(index, f"{name}.index")
+    return FileResponse(
+        tmp,
+        media_type="application/zip",
+        filename=f"{name}.zip",
+        background=BackgroundTask(os.remove, tmp),
+    )
 
 
 @router.delete("/{job_id}")

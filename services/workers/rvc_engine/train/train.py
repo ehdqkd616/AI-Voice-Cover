@@ -596,7 +596,9 @@ def train_and_evaluate(
         global_step += 1
     # /Run steps
 
-    if epoch % hps.save_every_epoch == 0 and rank == 0:
+    # ai-voice-cover: also checkpoint the final epoch, so "이어서 학습" resumes
+    # from exactly where a finished run ended rather than the last interval.
+    if (epoch % hps.save_every_epoch == 0 or epoch >= hps.total_epoch) and rank == 0:
         if hps.if_latest == 0:
             utils.save_checkpoint(
                 net_g,

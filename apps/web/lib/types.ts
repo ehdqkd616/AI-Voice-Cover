@@ -147,6 +147,10 @@ export interface TrainingJob {
   queued_at: string;
   started_at: string | null;
   finished_at: string | null;
+  checkpoint_epoch: number | null;
+  has_checkpoint: boolean;
+  has_model_file: boolean;
+  resume_count: number;
 }
 
 export interface TrainingLog {

@@ -139,6 +139,9 @@ export const api = {
   trainingDelete: (jobId: string) =>
     request<{ deleted: string }>(`/api/v1/training/${jobId}`, { method: "DELETE" }),
 
+  trainingResume: (jobId: string, body: { extra_epochs: number; batch_size?: number }) =>
+    request<TrainingJob>(`/api/v1/training/${jobId}/resume`, { method: "POST", body: JSON.stringify(body) }),
+
   deleteLibraryItem: (jobId: string) =>
     request<{ deleted: string; cascaded: number }>(`/api/v1/library/${jobId}`, { method: "DELETE" }),
 };
@@ -150,5 +153,7 @@ export const api = {
 // same-origin requests, so these are plain URL builders, not fetch wrappers.
 export const mediaStreamUrl = (mediaId: string) => `${API_BASE}/api/v1/media/${mediaId}/stream`;
 export const mediaDownloadUrl = (mediaId: string) => `${API_BASE}/api/v1/media/${mediaId}/file`;
+export const trainingDownloadUrl = (jobId: string, kind: "zip" | "weight" | "index") =>
+  `${API_BASE}/api/v1/training/${jobId}/download/${kind}`;
 
 export { ApiError };

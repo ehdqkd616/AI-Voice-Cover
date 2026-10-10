@@ -229,13 +229,32 @@ def write_filelist_and_config(exp_name: str, sample_rate: str) -> int:
     return len(names)
 
 
-def last_epoch(exp_name: str) -> tuple[int, float | None]:
-    """(latest finished epoch, average seconds per epoch over the last few)."""
-    matches = EPOCH_RE.findall(_tail(exp_path(exp_name) / "train.log", 400))
+def last_epoch(exp_name: str, since: int = 0) -> tuple[int, float | None]:
+    """(latest finished epoch, average seconds per epoch over the last few),
+    from train.log past byte offset `since` — i.e. ignoring earlier runs."""
+    try:
+        with open(exp_path(exp_name) / "train.log", "rb") as f:
+            f.seek(since)
+            text = f.read().decode("utf8", errors="replace")
+    except FileNotFoundError:
+        text = ""
+    matches = EPOCH_RE.findall(text)
     if not matches:
         return 0, None
     recent = [int(h) * 3600 + int(m) * 60 + float(s) for _, h, m, s in matches[-10:]]
     return int(matches[-1][0]), sum(recent) / len(recent)
+
+
+def save_interval(epochs: int) -> int:
+    """How often train.py saves its G/D checkpoint — often enough that an OOM
+    retry, a crash or a stop loses little work. train.py also always saves at
+    the final epoch (patched), so a finished job resumes exactly where it ended."""
+    return max(1, min(10, epochs // 10 or 1))
+
+
+def has_checkpoint(exp_name: str) -> bool:
+    exp = exp_path(exp_name)
+    return (exp / "G_2333333.pth").is_file() and (exp / "D_2333333.pth").is_file()
 
 
 def train(
@@ -253,9 +272,10 @@ def train(
     exp = exp_path(exp_name)
     weight = WEIGHTS_DIR / f"{exp_name}.pth"
     out_log = exp / "train.out.log"
-    # Checkpoint often enough that an OOM retry or a crash loses little work.
-    save_every = max(1, min(10, epochs // 10 or 1))
+    save_every = save_interval(epochs)
     bs = batch_size
+    # train.log accumulates across resumes; only epochs logged by this call count.
+    log_start = (exp / "train.log").stat().st_size if (exp / "train.log").exists() else 0
 
     while True:
         offset = out_log.stat().st_size if out_log.exists() else 0
@@ -278,7 +298,7 @@ def train(
             ],
             out_log,
             should_cancel,
-            on_tick=lambda: on_epoch(*last_epoch(exp_name), bs),
+            on_tick=lambda: on_epoch(*last_epoch(exp_name, log_start), bs),
         )
         if rc == 0 and weight.is_file():
             return bs
@@ -297,6 +317,11 @@ def train(
                 "GPU 메모리가 부족합니다 (batch size 1에서도 실패). 다른 GPU 프로그램을 멈춘 뒤 다시 시도해주세요.",
             )
         raise TrainingFailed("TRAIN_FAILED", "모델 학습이 실패했습니다.\n" + "\n".join(run_output.splitlines()[-15:]))
+
+
+def existing_index(exp_name: str) -> Path | None:
+    added = sorted(exp_path(exp_name).glob(f"added_IVF*_Flat_nprobe_*_{exp_name}_v2.index"), key=lambda p: p.stat().st_mtime)
+    return added[-1] if added else None
 
 
 def build_index(exp_name: str, should_cancel: ShouldCancel) -> Path:

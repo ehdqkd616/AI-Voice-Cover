@@ -5,11 +5,16 @@ a cover requested meanwhile waits its turn on the same solo worker.
 
 Progress lives on the Job row (type="train"): Job.stage follows the steps
 above and Job.params carries live training stats (current_epoch, eta_sec,
-effective_batch_size) for the /train UI, which polls it.
+effective_batch_size, checkpoint_epoch) for the /train UI, which polls it.
+
+A resume ("이어서 학습", params.resume) reuses the experiment dir: it skips
+straight to training from the last G/D checkpoint with a raised epoch target,
+then updates the already-registered model in place.
 """
 
 import gc
 import os
+import re
 import shutil
 import tempfile
 from datetime import datetime, timezone
@@ -119,8 +124,21 @@ def _prepare_dataset(job_id: str, exp_name: str, media: list[dict], auto_vocal: 
     return seconds
 
 
+def _default_description(epochs: int) -> str:
+    return f"직접 학습한 모델 · {epochs} epoch"
+
+
 def _register_model(job_id: str, params: dict, user_id, sample_rate: str, index_name: str) -> str:
     with session_scope() as db:
+        existing = db.get(VoiceModel, params["voice_model_id"]) if params.get("voice_model_id") else None
+        if existing is not None:
+            # Resumed run: same weight file (overwritten by train.py), so just
+            # refresh the index and the auto-generated epoch count.
+            existing.index_filename = index_name
+            if not existing.description or re.fullmatch(r"직접 학습한 모델 · \d+ epoch", existing.description):
+                existing.description = _default_description(int(params["epochs"]))
+            return existing.id
+
         name = params["name"]
         taken = {n for (n,) in db.query(VoiceModel.name).all()}
         suffix = 2
@@ -135,7 +153,7 @@ def _register_model(job_id: str, params: dict, user_id, sample_rate: str, index_
             version="v2",
             sample_rate=pipeline.SR_INT[sample_rate],
             has_f0=True,
-            description=params.get("description") or f"직접 학습한 모델 · {params['epochs']} epoch",
+            description=params.get("description") or _default_description(int(params["epochs"])),
             pairing_confidence="manual",
             uploaded_by=user_id,
         )
@@ -160,6 +178,7 @@ def train_voice_model(self, job_id: str) -> dict:
 
     exp_name = params["exp_name"]
     sample_rate = params["sample_rate"]
+    resume = bool(params.get("resume")) and pipeline.has_checkpoint(exp_name)
     redis = get_redis()
 
     def should_cancel() -> bool:
@@ -172,46 +191,61 @@ def train_voice_model(self, job_id: str) -> dict:
 
     mark_running(job_id)
     try:
-        if not media:
-            raise TrainingFailed("TRAIN_DATASET_TOO_SHORT", "학습에 쓸 음원을 찾을 수 없습니다.")
         pipeline.ensure_runtime_assets(sample_rate)
         _release_gpu()
 
-        _update(job_id, "prepare", 0)
-        seconds = _prepare_dataset(job_id, exp_name, media, params.get("auto_vocal", True), should_cancel)
-        _release_gpu()  # Demucs, used just above, is the biggest VRAM holder
-        _update(job_id, "prepare", 100, dataset_seconds=round(seconds, 1))
+        if resume:
+            # Dataset, slices and features are already in the experiment dir.
+            _log(exp_name, f"이어서 학습 — 저장된 체크포인트(epoch {params.get('checkpoint_epoch') or '?'})부터 {params['epochs']} epoch까지")
+        else:
+            if not media:
+                raise TrainingFailed("TRAIN_DATASET_TOO_SHORT", "학습에 쓸 음원을 찾을 수 없습니다.")
+            _update(job_id, "prepare", 0)
+            seconds = _prepare_dataset(job_id, exp_name, media, params.get("auto_vocal", True), should_cancel)
+            _release_gpu()  # Demucs, used just above, is the biggest VRAM holder
+            _update(job_id, "prepare", 100, dataset_seconds=round(seconds, 1))
 
-        _update(job_id, "preprocess", 0)
-        slices = pipeline.preprocess(exp_name, pipeline.exp_path(exp_name) / "dataset", sample_rate, should_cancel)
-        _update(job_id, "preprocess", 100, slices=slices)
+            _update(job_id, "preprocess", 0)
+            slices = pipeline.preprocess(exp_name, pipeline.exp_path(exp_name) / "dataset", sample_rate, should_cancel)
+            _update(job_id, "preprocess", 100, slices=slices)
 
-        _update(job_id, "extract", 0)
-        pipeline.extract_features(exp_name, should_cancel, lambda pct: _update(job_id, "extract", pct))
+            _update(job_id, "extract", 0)
+            pipeline.extract_features(exp_name, should_cancel, lambda pct: _update(job_id, "extract", pct))
 
         pipeline.write_filelist_and_config(exp_name, sample_rate)
         epochs = int(params["epochs"])
-        _update(job_id, "train", 0, current_epoch=0, effective_batch_size=params["batch_size"])
-        last = {"epoch": -1}
+        start_epoch = int(params.get("checkpoint_epoch") or 0) if resume else 0
+        save_every = pipeline.save_interval(epochs)
+        _update(
+            job_id, "train", 100 * start_epoch / epochs,
+            current_epoch=start_epoch, eta_sec=None, effective_batch_size=params["batch_size"],
+        )
+        last = {"epoch": start_epoch}
 
         def on_epoch(epoch: int, sec_per_epoch: float | None, bs: int) -> None:
-            if epoch == last["epoch"]:
+            if epoch <= last["epoch"]:  # a resume first redoes the checkpoint epoch
                 return
             last["epoch"] = epoch
             eta = round(sec_per_epoch * (epochs - epoch)) if sec_per_epoch else None
+            extra = {"checkpoint_epoch": epoch} if epoch % save_every == 0 or epoch >= epochs else {}
             _update(
                 job_id, "train", 100 * epoch / epochs,
-                current_epoch=epoch, eta_sec=eta, sec_per_epoch=sec_per_epoch, effective_batch_size=bs,
+                current_epoch=epoch, eta_sec=eta, sec_per_epoch=sec_per_epoch, effective_batch_size=bs, **extra,
             )
 
         bs = pipeline.train(exp_name, sample_rate, epochs, int(params["batch_size"]), should_cancel, on_epoch)
-        _update(job_id, "train", 100, current_epoch=epochs, eta_sec=0, effective_batch_size=bs)
+        _update(job_id, "train", 100, current_epoch=epochs, checkpoint_epoch=epochs, eta_sec=0, effective_batch_size=bs)
 
         _update(job_id, "index", 0)
-        index_path = pipeline.build_index(exp_name, should_cancel)
+        # The index only depends on the extracted features, which a resume
+        # doesn't touch — reuse the one built last time when it's there.
+        built = pipeline.existing_index(exp_name) if resume else None
+        index_path = built or pipeline.build_index(exp_name, should_cancel)
         os.makedirs(settings.rvc_index_root, exist_ok=True)
         shutil.copyfile(index_path, os.path.join(settings.rvc_index_root, index_path.name))
 
+        with session_scope() as db:  # re-read: the model may have been deleted meanwhile
+            params["voice_model_id"] = (db.get(Job, job_id).params or {}).get("voice_model_id")
         voice_model_id = _register_model(job_id, params, user_id, sample_rate, index_path.name)
         _update(job_id, "index", 100, voice_model_id=voice_model_id)
         mark_succeeded(job_id, [])

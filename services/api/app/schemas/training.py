@@ -15,6 +15,15 @@ class TrainingRequest(BaseModel):
     sample_rate: Literal["40k", "48k"] = "40k"
 
 
+class TrainingResumeRequest(BaseModel):
+    # Epochs to add on top of the last saved checkpoint. Ignored when the job
+    # has no checkpoint yet (it failed before training) — that reruns the
+    # whole pipeline with the original epoch count.
+    extra_epochs: int = Field(default=100, ge=1, le=1000)
+    # None keeps the batch size that last worked (after any OOM fallback).
+    batch_size: int | None = Field(default=None, ge=1, le=16)
+
+
 class TrainingJobResponse(BaseModel):
     job_id: str
     name: str
@@ -37,6 +46,15 @@ class TrainingJobResponse(BaseModel):
     queued_at: datetime
     started_at: datetime | None
     finished_at: datetime | None
+    # Last epoch with a saved G/D checkpoint — where "이어서 학습" picks up.
+    checkpoint_epoch: int | None
+    # Experiment dir has a G/D checkpoint plus extracted features, so a resume
+    # can skip straight to training. Without one, a resume of a failed job
+    # reruns the whole pipeline instead.
+    has_checkpoint: bool
+    # The trained .pth exists and can be downloaded.
+    has_model_file: bool
+    resume_count: int
 
 
 class TrainingLogResponse(BaseModel):

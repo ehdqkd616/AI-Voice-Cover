@@ -96,7 +96,9 @@ docker compose exec -T api python tools/import_voice_models.py \
 - **학습 강도 프리셋** — 빠른 테스트(50) / 표준(200) / 고품질(400) epoch. 고급 설정에서 epoch·batch size·샘플레이트(40k/48k) 직접 지정 가능.
 - **진행 상황 실시간 표시** — 5단계 진행 표시, 현재 epoch와 남은 시간(ETA), 상세 로그. 페이지를 닫아도 서버에서 계속 진행됩니다.
 - **GPU 메모리 자동 대응** — 학습 전에 커버 워커가 들고 있던 모델 캐시를 비우고, 그래도 메모리가 부족(OOM)하면 batch size를 절반씩 줄여 마지막 체크포인트부터 자동으로 이어서 학습합니다.
-- **중지 / 기록 삭제**, 완료 후 **"이 목소리로 커버 만들기"** 바로가기.
+- **이어서 학습** — 끝난 학습에 epoch를 더 얹거나(+50/+100/+200 또는 직접 입력), 중지·실패한 학습을 마지막 체크포인트부터 이어갑니다. 데이터 준비·전처리·특징 추출은 건너뛰고 바로 학습 단계부터 시작하며, 끝나면 등록된 모델이 새 버전으로 교체됩니다. 체크포인트가 생기기 전에 실패한 학습은 "다시 시도"로 같은 설정 그대로 처음부터 재실행.
+- **모델 파일 다운로드** — 학습된 `.pth`와 `.index`를 각각, 또는 한 번에 `.zip`으로 받을 수 있습니다 (RVC WebUI 등 다른 RVC 프로그램에서 그대로 사용 가능).
+- **중지 / 기록 삭제**, 완료 후 **"이 목소리로 커버 만들기"** 바로가기. 중지해도 마지막 체크포인트는 남고, 기록을 삭제하면 체크포인트도 함께 지워져 더 이상 이어서 학습할 수 없습니다.
 
 내부적으로는 RVC-Learning의 학습 스크립트(`train/preprocess.py`, `extract_f0.py`, `extract_hubert_feature.py`, `train.py`, `train_index.py`)를 `services/workers/rvc_engine/train/`에 그대로 이식해서 WebUI와 같은 방식(서브프로세스)으로 실행합니다 — 오케스트레이션은 `services/workers/training/pipeline.py`, Celery 태스크는 `tasks.train_voice_model`(큐 `train`).
 

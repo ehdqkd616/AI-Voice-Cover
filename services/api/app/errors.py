@@ -28,6 +28,7 @@ ERROR_TABLE: dict[str, tuple[int, bool]] = {
     "FORBIDDEN": (403, False),
     "NAME_TAKEN": (409, False),
     "TRAINING_ACTIVE": (409, False),
+    "TRAIN_NO_CHECKPOINT": (409, False),
 }
 
 
