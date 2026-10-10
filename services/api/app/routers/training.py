@@ -92,6 +92,24 @@ def _index_path(db, job: Job) -> Path | None:
     return built[-1] if built else None
 
 
+def _save_interval(epochs: int) -> int:
+    return max(1, min(10, epochs // 10 or 1))  # must match workers/training/pipeline.save_interval
+
+
+def _checkpoint_epoch(job: Job) -> int | None:
+    """Epoch of the saved G/D checkpoint. Jobs trained before the worker
+    started recording it only have current_epoch — the checkpoint is then
+    the last save-interval multiple at or below it."""
+    p = job.params or {}
+    if p.get("checkpoint_epoch") is not None:
+        return int(p["checkpoint_epoch"])
+    current = int(p.get("current_epoch") or 0)
+    if not current:
+        return None
+    every = _save_interval(int(p.get("epochs") or current))
+    return current - current % every or None
+
+
 def _to_response(job: Job) -> TrainingJobResponse:
     p = job.params or {}
     return TrainingJobResponse(
@@ -116,7 +134,7 @@ def _to_response(job: Job) -> TrainingJobResponse:
         queued_at=job.queued_at,
         started_at=job.started_at,
         finished_at=job.finished_at,
-        checkpoint_epoch=p.get("checkpoint_epoch"),
+        checkpoint_epoch=_checkpoint_epoch(job),
         has_checkpoint=job.status not in ACTIVE and _has_checkpoint(job),
         has_model_file=_weight_path(job) is not None,
         resume_count=int(p.get("resume_count", 0)),
@@ -254,8 +272,9 @@ def resume_training(
         p = dict(job.params or {})
         resume_from_checkpoint = _has_checkpoint(job)
         if resume_from_checkpoint:
-            base = int(p.get("checkpoint_epoch") or p.get("current_epoch") or 0)
+            base = _checkpoint_epoch(job) or 0
             p["epochs"] = base + body.extra_epochs
+            p["checkpoint_epoch"] = base  # pins the fallback for older jobs, too
             stage = "train"
         elif job.status == "succeeded":
             raise ApiError("TRAIN_NO_CHECKPOINT", "이어서 학습할 체크포인트가 남아 있지 않습니다.")

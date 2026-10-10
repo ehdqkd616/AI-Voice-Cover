@@ -76,7 +76,7 @@ export default function LibraryPage() {
       <div className="space-y-3">
         {items?.map((item) => (
           <div key={item.job_id} className="space-y-2 rounded-lg border border-white/10 bg-panel p-3">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="flex items-start sm:items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="font-medium truncate">{item.title ?? "(제목 없음)"}</p>
                 <p className="text-xs text-white/50 truncate">
@@ -90,7 +90,7 @@ export default function LibraryPage() {
                 onClick={() => handleDelete(item)}
                 disabled={busyId === item.job_id}
                 title="삭제"
-                className="self-start sm:self-auto rounded-md border border-white/10 hover:border-red-400 hover:text-red-400 px-2 py-1.5 text-xs whitespace-nowrap disabled:opacity-40"
+                className="shrink-0 rounded-md border border-white/10 hover:border-red-400 hover:text-red-400 px-2 py-1.5 text-xs whitespace-nowrap disabled:opacity-40"
               >
                 {busyId === item.job_id ? "…" : "🗑"}
               </button>

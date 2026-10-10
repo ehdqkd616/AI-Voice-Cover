@@ -83,7 +83,9 @@ export default function HomePage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold">AI 보이스 커버 만들기</h1>
+      <p className="text-sm text-white/50">
+        원곡을 고르고 → 목소리를 고르면 → 보컬 분리 · 목소리 변환 · MR 합치기까지 한 번에 끝나요.
+      </p>
 
       {step === "source" && (
         <SourcePicker

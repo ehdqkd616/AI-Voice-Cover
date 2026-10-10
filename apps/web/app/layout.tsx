@@ -14,8 +14,8 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen">
         <AuthProvider>
           <SiteHeader />
-          <main className="max-w-3xl mx-auto px-6 py-10">{children}</main>
-          <footer className="max-w-3xl mx-auto px-6 pb-10 text-xs text-white/30">
+          <main className="max-w-3xl mx-auto px-4 sm:px-6 py-6 sm:py-10">{children}</main>
+          <footer className="max-w-3xl mx-auto px-4 sm:px-6 pb-10 text-xs text-white/30">
             보컬/반주 분리(Demucs)와 보이스 변환(RVC)은 모두 서버에서 처리됩니다.
           </footer>
         </AuthProvider>
