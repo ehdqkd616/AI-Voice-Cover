@@ -150,7 +150,7 @@ export default function ConversionParamsForm({ value, onChange }: Props) {
 
       <div className="space-y-1">
         <label className="text-sm font-medium">보호 강도 (protect)</label>
-        <p className="text-white/50 text-xs">자음/숨소리 보호 강도 — 높을수록 원음 보존</p>
+        <p className="text-white/50 text-xs">자음·숨소리 보호 — 낮을수록 강하게 보호해 지직거림이 줄어요 (0.5 = 보호 끔)</p>
         <div className="flex items-center gap-3">
           <input
             type="range"
