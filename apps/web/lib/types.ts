@@ -2,12 +2,50 @@
 // a real OpenAPI->TS codegen step is a natural follow-up once the API is
 // stable enough to be worth generating from.
 
+export type UserStatus = "pending" | "approved" | "rejected" | "suspended";
+
 export interface User {
   id: string;
   username: string;
+  name: string;
+  status: UserStatus;
   is_approved: boolean;
   is_admin: boolean;
   created_at: string;
+  /** 비밀번호를 서버 .env(ADMIN_PASSWORD)로 관리하는 공통 관리자 계정 */
+  password_managed: boolean;
+}
+
+export interface AdminUser extends User {
+  signup_note: string | null;
+  reject_reason: string | null;
+  approved_at: string | null;
+  last_login_at: string | null;
+}
+
+export interface AdminStats {
+  users: { total: number; pending: number; by_status: Record<string, number> };
+  today: { signups: number; logins: number; login_failures: number };
+  week_signups: number;
+}
+
+export interface AuditLogItem {
+  id: number;
+  action: string;
+  target_id: string | null;
+  detail: Record<string, unknown> | null;
+  ip: string | null;
+  created_at: string;
+  actor_username: string | null;
+}
+
+export interface SignupInput {
+  username: string;
+  name: string;
+  password: string;
+  signup_note?: string;
+  agree_terms: boolean;
+  agree_privacy: boolean;
 }
 
 export interface MeResponse {

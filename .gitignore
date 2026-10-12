@@ -32,3 +32,4 @@ next-env.d.ts
 /services/workers/rvc_engine/logs/
 /services/workers/rvc_engine/assets/weights/
 /services/workers/rvc_engine/assets/pretrained_v2/
+backups/

@@ -21,7 +21,13 @@ export default function LoginPage() {
       await refresh();
       router.push("/");
     } catch (e) {
-      setError(e instanceof ApiError ? translateError(e.code, e.message) : "로그인에 실패했습니다.");
+      if (e instanceof ApiError) {
+        const reason = typeof e.detail?.reason === "string" ? ` (사유: ${e.detail.reason})` : "";
+        // 잠금·검증 오류처럼 서버 메시지가 더 구체적인 경우는 그대로 보여 준다
+        setError((e.code === "LOGIN_LOCKED" ? e.message : translateError(e.code, e.message)) + reason);
+      } else {
+        setError("로그인에 실패했습니다.");
+      }
     } finally {
       setLoading(false);
     }
@@ -30,7 +36,7 @@ export default function LoginPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-lg font-semibold">로그인</h1>
-      <AuthForm mode="login" onSubmit={handleSubmit} loading={loading} error={error} />
+      <AuthForm onSubmit={handleSubmit} loading={loading} error={error} />
       <p className="text-sm text-white/50">
         계정이 없으신가요? <a href="/signup" className="text-accent">회원가입</a>
       </p>

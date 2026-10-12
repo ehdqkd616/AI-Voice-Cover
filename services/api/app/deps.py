@@ -22,9 +22,11 @@ def get_current_user(session_id: str | None = Cookie(default=None, alias=SESSION
         return None
     db = SessionLocal()
     try:
-        return db.get(User, user_id)
+        user = db.get(User, user_id)
     finally:
         db.close()
+    # 승인된 회원만 — 정지·거절된 계정은 세션이 남아 있어도 로그인 안 된 것으로 본다
+    return user if user is not None and user.status == "approved" else None
 
 
 def require_user(current_user: User | None = Depends(get_current_user)) -> User:

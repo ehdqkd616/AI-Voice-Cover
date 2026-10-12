@@ -27,9 +27,33 @@ class User(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     username: Mapped[str] = mapped_column(String, unique=True, nullable=False)
     password_hash: Mapped[str] = mapped_column(Text, nullable=False)
-    is_approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    name: Mapped[str] = mapped_column(String(50), nullable=False, server_default="")
+    signup_note: Mapped[str | None] = mapped_column(Text)
+    # pending(승인 대기) / approved / rejected / suspended
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="pending", server_default="pending")
+    reject_reason: Mapped[str | None] = mapped_column(Text)
     is_admin: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def is_approved(self) -> bool:
+        return self.status == "approved"
+
+
+class AuditLog(Base):
+    """가입·로그인·관리자 조치 기록"""
+
+    __tablename__ = "audit_logs"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    actor_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL"))
+    action: Mapped[str] = mapped_column(String(50), nullable=False)
+    target_id: Mapped[str | None] = mapped_column(String(64))
+    detail: Mapped[dict | None] = mapped_column(JSONB)
+    ip: Mapped[str | None] = mapped_column(String(64))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), index=True)
 
 
 class Media(Base):

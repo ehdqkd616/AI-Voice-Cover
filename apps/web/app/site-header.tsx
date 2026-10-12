@@ -64,7 +64,9 @@ export default function SiteHeader() {
                     관리자
                   </a>
                 )}
-                <span className="hidden sm:inline text-white/40 truncate max-w-[10rem]">{user.username}</span>
+                <a href="/account" className={`whitespace-nowrap truncate max-w-[10rem] hover:text-white ${pathname.startsWith("/account") ? "text-white" : "text-white/40"}`}>
+                  {user.name || user.username}
+                </a>
                 <button onClick={logout} className="hover:text-white whitespace-nowrap">
                   로그아웃
                 </button>

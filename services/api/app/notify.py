@@ -33,8 +33,22 @@ def format_kst(dt: datetime) -> str:
     return f"{k.year}년 {k.month}월 {k.day}일 {k.hour:02d}시 {k.minute:02d}분 {k.second:02d}초"
 
 
-def _signup_html(username: str, signed_up_at: str, admin_url: str) -> str:
-    e, t, url = html.escape(username), html.escape(signed_up_at), html.escape(admin_url, quote=True)
+def _fields(username: str, name: str, note: str | None, signed_up_at: str) -> list[tuple[str, str]]:
+    return [("아이디", username), ("이름", name), ("가입 일시 (한국 시간)", signed_up_at)] + ([("가입 메모", note)] if note else [])
+
+
+def _row(label: str, value: str, last: bool) -> str:
+    border = "" if last else "border-bottom:1px solid #e5e7eb;"
+    return (f'<tr><td style="padding:16px 18px;{border}">'
+            f'<div style="font-size:12px;color:#6b7280;margin-bottom:4px;">{label}</div>'
+            f'<div style="font-size:16px;font-weight:600;color:#111827;word-break:break-all;white-space:pre-wrap;">{html.escape(value)}</div>'
+            "</td></tr>")
+
+
+def _signup_html(username: str, name: str, note: str | None, signed_up_at: str, admin_url: str) -> str:
+    e, url = html.escape(username), html.escape(admin_url, quote=True)
+    fields = _fields(username, name, note, signed_up_at)
+    rows = "\n".join(_row(label, value, i == len(fields) - 1) for i, (label, value) in enumerate(fields))
     # 메일 클라이언트(특히 Gmail/Outlook)는 <style>과 flex를 제대로 지원하지 않아서
     # 테이블 + 인라인 스타일로만 짠다.
     return f"""\
@@ -65,14 +79,7 @@ def _signup_html(username: str, signed_up_at: str, admin_url: str) -> str:
         <tr><td style="padding:20px 28px;">
           <table role="presentation" width="100%" cellpadding="0" cellspacing="0"
                  style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:12px;">
-            <tr><td style="padding:16px 18px;border-bottom:1px solid #e5e7eb;">
-              <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">아이디</div>
-              <div style="font-size:16px;font-weight:600;color:#111827;word-break:break-all;">{e}</div>
-            </td></tr>
-            <tr><td style="padding:16px 18px;">
-              <div style="font-size:12px;color:#6b7280;margin-bottom:4px;">가입 일시 (한국 시간)</div>
-              <div style="font-size:16px;font-weight:600;color:#111827;">{t}</div>
-            </td></tr>
+            {rows}
           </table>
         </td></tr>
 
@@ -97,17 +104,16 @@ def _signup_html(username: str, signed_up_at: str, admin_url: str) -> str:
 </html>"""
 
 
-def _signup_text(username: str, signed_up_at: str, admin_url: str) -> str:
+def _signup_text(username: str, name: str, note: str | None, signed_up_at: str, admin_url: str) -> str:
+    lines = [f"{label}: {value}" for label, value in _fields(username, name, note, signed_up_at)]
     return (
-        "[AI Voice Cover] 새 회원가입 승인 요청\n\n"
-        f"아이디: {username}\n"
-        f"가입 일시: {signed_up_at} (한국 시간)\n\n"
+        "[AI Voice Cover] 새 회원가입 승인 요청\n\n" + "\n".join(lines) + "\n\n"
         "승인해야 로그인할 수 있어요. 아래 관리자 페이지에서 승인해 주세요.\n"
         f"{admin_url}\n"
     )
 
 
-def build_signup_message(username: str, created_at: datetime) -> EmailMessage | None:
+def build_signup_message(username: str, name: str, note: str | None, created_at: datetime) -> EmailMessage | None:
     settings = get_settings()
     recipients = settings.admin_notify_email_list
     if not recipients:
@@ -117,21 +123,21 @@ def build_signup_message(username: str, created_at: datetime) -> EmailMessage | 
     admin_url = settings.public_web_url.rstrip("/") + "/admin"
 
     msg = EmailMessage()
-    msg["Subject"] = f"[AI Voice Cover] {username} 님이 가입했어요 — 승인해 주세요"
+    msg["Subject"] = f"[AI Voice Cover] {name}({username}) 님이 가입했어요 — 승인해 주세요"
     msg["From"] = formataddr(("AI Voice Cover 알림", settings.smtp_from or settings.smtp_user))
     msg["To"] = ", ".join(recipients)
     msg["Message-ID"] = make_msgid(domain="ai-voice-cover.local")
-    msg.set_content(_signup_text(username, signed_up_at, admin_url))
-    msg.add_alternative(_signup_html(username, signed_up_at, admin_url), subtype="html")
+    msg.set_content(_signup_text(username, name, note, signed_up_at, admin_url))
+    msg.add_alternative(_signup_html(username, name, note, signed_up_at, admin_url), subtype="html")
     return msg
 
 
-def send_signup_notification(username: str, created_at: datetime) -> None:
+def send_signup_notification(username: str, name: str, note: str | None, created_at: datetime) -> None:
     settings = get_settings()
     if not (settings.smtp_user and settings.smtp_password):
         logger.warning("SMTP 설정이 없어 가입 알림 메일을 건너뜁니다 (%s)", username)
         return
-    msg = build_signup_message(username, created_at)
+    msg = build_signup_message(username, name, note, created_at)
     if msg is None:
         return
 
