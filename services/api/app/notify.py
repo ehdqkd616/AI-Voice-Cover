@@ -33,8 +33,8 @@ def format_kst(dt: datetime) -> str:
     return f"{k.year}년 {k.month}월 {k.day}일 {k.hour:02d}시 {k.minute:02d}분 {k.second:02d}초"
 
 
-def _signup_html(email: str, signed_up_at: str, admin_url: str) -> str:
-    e, t, url = html.escape(email), html.escape(signed_up_at), html.escape(admin_url, quote=True)
+def _signup_html(username: str, signed_up_at: str, admin_url: str) -> str:
+    e, t, url = html.escape(username), html.escape(signed_up_at), html.escape(admin_url, quote=True)
     # 메일 클라이언트(특히 Gmail/Outlook)는 <style>과 flex를 제대로 지원하지 않아서
     # 테이블 + 인라인 스타일로만 짠다.
     return f"""\
@@ -97,17 +97,17 @@ def _signup_html(email: str, signed_up_at: str, admin_url: str) -> str:
 </html>"""
 
 
-def _signup_text(email: str, signed_up_at: str, admin_url: str) -> str:
+def _signup_text(username: str, signed_up_at: str, admin_url: str) -> str:
     return (
         "[AI Voice Cover] 새 회원가입 승인 요청\n\n"
-        f"아이디: {email}\n"
+        f"아이디: {username}\n"
         f"가입 일시: {signed_up_at} (한국 시간)\n\n"
         "승인해야 로그인할 수 있어요. 아래 관리자 페이지에서 승인해 주세요.\n"
         f"{admin_url}\n"
     )
 
 
-def build_signup_message(email: str, created_at: datetime) -> EmailMessage | None:
+def build_signup_message(username: str, created_at: datetime) -> EmailMessage | None:
     settings = get_settings()
     recipients = settings.admin_notify_email_list
     if not recipients:
@@ -117,21 +117,21 @@ def build_signup_message(email: str, created_at: datetime) -> EmailMessage | Non
     admin_url = settings.public_web_url.rstrip("/") + "/admin"
 
     msg = EmailMessage()
-    msg["Subject"] = f"[AI Voice Cover] {email} 님이 가입했어요 — 승인해 주세요"
+    msg["Subject"] = f"[AI Voice Cover] {username} 님이 가입했어요 — 승인해 주세요"
     msg["From"] = formataddr(("AI Voice Cover 알림", settings.smtp_from or settings.smtp_user))
     msg["To"] = ", ".join(recipients)
     msg["Message-ID"] = make_msgid(domain="ai-voice-cover.local")
-    msg.set_content(_signup_text(email, signed_up_at, admin_url))
-    msg.add_alternative(_signup_html(email, signed_up_at, admin_url), subtype="html")
+    msg.set_content(_signup_text(username, signed_up_at, admin_url))
+    msg.add_alternative(_signup_html(username, signed_up_at, admin_url), subtype="html")
     return msg
 
 
-def send_signup_notification(email: str, created_at: datetime) -> None:
+def send_signup_notification(username: str, created_at: datetime) -> None:
     settings = get_settings()
     if not (settings.smtp_user and settings.smtp_password):
-        logger.warning("SMTP 설정이 없어 가입 알림 메일을 건너뜁니다 (%s)", email)
+        logger.warning("SMTP 설정이 없어 가입 알림 메일을 건너뜁니다 (%s)", username)
         return
-    msg = build_signup_message(email, created_at)
+    msg = build_signup_message(username, created_at)
     if msg is None:
         return
 
@@ -146,6 +146,6 @@ def send_signup_notification(email: str, created_at: datetime) -> None:
                 smtp.starttls(context=context)
                 smtp.login(settings.smtp_user, settings.smtp_password)
                 smtp.send_message(msg)
-        logger.info("가입 알림 메일 발송: %s -> %s", email, msg["To"])
+        logger.info("가입 알림 메일 발송: %s -> %s", username, msg["To"])
     except Exception:
-        logger.exception("가입 알림 메일 발송 실패 (%s)", email)
+        logger.exception("가입 알림 메일 발송 실패 (%s)", username)

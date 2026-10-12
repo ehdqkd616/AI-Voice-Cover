@@ -8,9 +8,11 @@ from common.db.session import SessionLocal
 from common.storage import ensure_bucket
 from .errors import ApiError, api_error_handler
 from .routers import admin, auth, cover, jobs, library, media, training, upload, voice_models, youtube
-from .security import hash_password
+from .security import hash_password, verify_password
 
 settings = get_settings()
+
+ADMIN_USERNAME = "admin"
 
 app = FastAPI(title="AI Voice Cover API", version="0.1.0")
 
@@ -40,20 +42,29 @@ app.include_router(training.router, prefix="/api/v1/training", tags=["training"]
 
 
 def _bootstrap_admin() -> None:
-    """Creates the one approved admin from ADMIN_EMAIL/ADMIN_PASSWORD (.env) if it
-    doesn't exist yet — the only way to get a first admin without a DB console,
-    since signup alone leaves every account unapproved."""
-    email, password = settings.admin_email, settings.admin_password
-    if not email or not password:
+    """Keeps the shared "admin" account in sync with ADMIN_PASSWORD (.env) on every
+    startup: creates it if missing, otherwise re-approves it, restores admin rights
+    and resets its password to the .env value. Other accounts are left untouched."""
+    password = settings.admin_password
+    if not password:
         return
     db = SessionLocal()
     try:
-        existing = db.execute(select(User).where(User.email == email)).scalar_one_or_none()
-        if existing:
-            return
-        db.add(
-            User(email=email, password_hash=hash_password(password), is_approved=True, is_admin=True)
-        )
+        user = db.execute(select(User).where(User.username == ADMIN_USERNAME)).scalar_one_or_none()
+        if user is None:
+            db.add(
+                User(
+                    username=ADMIN_USERNAME,
+                    password_hash=hash_password(password),
+                    is_approved=True,
+                    is_admin=True,
+                )
+            )
+        else:
+            user.is_approved = True
+            user.is_admin = True
+            if not verify_password(password, user.password_hash):
+                user.password_hash = hash_password(password)
         db.commit()
     finally:
         db.close()

@@ -57,11 +57,11 @@ async function requestForm<T>(path: string, form: FormData, method: string = "PO
 }
 
 export const api = {
-  signup: (email: string, password: string) =>
-    request<User>("/api/v1/auth/signup", { method: "POST", body: JSON.stringify({ email, password }) }),
+  signup: (username: string, password: string) =>
+    request<User>("/api/v1/auth/signup", { method: "POST", body: JSON.stringify({ username, password }) }),
 
-  login: (email: string, password: string) =>
-    request<User>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ email, password }) }),
+  login: (username: string, password: string) =>
+    request<User>("/api/v1/auth/login", { method: "POST", body: JSON.stringify({ username, password }) }),
 
   logout: () => request<{ logged_out: boolean }>("/api/v1/auth/logout", { method: "POST" }),
 

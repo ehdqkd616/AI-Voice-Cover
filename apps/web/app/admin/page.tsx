@@ -50,7 +50,7 @@ export default function AdminPage() {
   }
 
   async function handleDelete(target: User) {
-    const ok = window.confirm(`"${target.email}" 계정을 삭제할까요? 되돌릴 수 없습니다.`);
+    const ok = window.confirm(`"${target.username}" 계정을 삭제할까요? 되돌릴 수 없습니다.`);
     if (!ok) return;
 
     setBusyId(target.id);
@@ -106,7 +106,7 @@ export default function AdminPage() {
           >
             <div className="flex-1 min-w-0">
               <p className="font-medium truncate">
-                {u.email}
+                {u.username}
                 {u.is_admin && <span className="ml-2 text-xs text-accent whitespace-nowrap">관리자</span>}
               </p>
               <p className="text-xs text-white/50 truncate">

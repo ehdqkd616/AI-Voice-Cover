@@ -48,8 +48,7 @@ class Settings(BaseSettings):
     mix_default_output_format: str = "mp3-320"
     mix_default_vocal_gain_db: float = 0.0
 
-    # Bootstrapped as an approved admin user on API startup if set and not already present.
-    admin_email: str = ""
+    # Password of the shared "admin" account, synced on every API startup.
     admin_password: str = ""
 
     # 회원가입 시 승인 요청 메일 (비워두면 발송 안 함). Gmail이면 앱 비밀번호를 쓴다.

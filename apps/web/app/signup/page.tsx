@@ -10,11 +10,11 @@ export default function SignupPage() {
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useState(false);
 
-  async function handleSubmit(email: string, password: string) {
+  async function handleSubmit(username: string, password: string) {
     setLoading(true);
     setError(null);
     try {
-      await api.signup(email, password);
+      await api.signup(username, password);
       setDone(true);
     } catch (e) {
       setError(e instanceof ApiError ? translateError(e.code, e.message) : "회원가입에 실패했습니다.");

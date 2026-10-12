@@ -49,7 +49,7 @@
 
 ```bash
 cp .env.example .env
-# .env에서 ADMIN_EMAIL / ADMIN_PASSWORD를 채워두면 첫 기동 시 관리자 계정이 자동 생성됩니다.
+# .env에서 ADMIN_PASSWORD를 채워두면 기동 시 관리자 계정(아이디: admin)이 자동 생성됩니다.
 ```
 
 RVC 엔진에 필요한 사전학습 모델 2개(HuBERT/ContentVec, RMVPE — 각각 189MB/181MB)는 GitHub 100MB 제한 때문에 저장소에 포함되어 있지 않습니다. 빌드 전에 채워 넣어야 합니다:

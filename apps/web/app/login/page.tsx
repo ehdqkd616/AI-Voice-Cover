@@ -13,11 +13,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  async function handleSubmit(email: string, password: string) {
+  async function handleSubmit(username: string, password: string) {
     setLoading(true);
     setError(null);
     try {
-      await api.login(email, password);
+      await api.login(username, password);
       await refresh();
       router.push("/");
     } catch (e) {

@@ -4,40 +4,70 @@ import { FormEvent, useState } from "react";
 
 interface Props {
   mode: "login" | "signup";
-  onSubmit: (email: string, password: string) => void;
+  onSubmit: (username: string, password: string) => void;
   loading?: boolean;
   error?: string | null;
 }
 
+const inputClass =
+  "w-full rounded-md bg-panel border border-white/10 px-3 py-2 text-sm outline-none focus:border-accent";
+
 export default function AuthForm({ mode, onSubmit, loading, error }: Props) {
-  const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirm, setConfirm] = useState("");
+  const [localError, setLocalError] = useState<string | null>(null);
+  const isSignup = mode === "signup";
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();
-    onSubmit(email, password);
+    if (isSignup && password !== confirm) {
+      setLocalError("비밀번호가 일치하지 않습니다.");
+      return;
+    }
+    setLocalError(null);
+    onSubmit(username.trim(), password);
   }
+
+  const shownError = localError ?? error;
 
   return (
     <form onSubmit={handleSubmit} className="space-y-3 max-w-sm">
       <input
-        type="email"
+        type="text"
         required
-        placeholder="이메일"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className="w-full rounded-md bg-panel border border-white/10 px-3 py-2 text-sm outline-none focus:border-accent"
+        autoComplete="username"
+        // 가입은 영문/숫자/_/- 3~32자. 로그인은 예전 이메일 아이디도 받아야 해서 제한하지 않는다.
+        pattern={isSignup ? "[A-Za-z0-9_\\-]{3,32}" : undefined}
+        title={isSignup ? "영문, 숫자, _, - 조합 3~32자" : undefined}
+        placeholder={isSignup ? "아이디 (영문·숫자 3~32자)" : "아이디"}
+        value={username}
+        onChange={(e) => setUsername(e.target.value)}
+        className={inputClass}
       />
       <input
         type="password"
         required
-        minLength={8}
-        placeholder="비밀번호 (8자 이상)"
+        minLength={isSignup ? 8 : undefined}
+        autoComplete={isSignup ? "new-password" : "current-password"}
+        placeholder={isSignup ? "비밀번호 (8자 이상)" : "비밀번호"}
         value={password}
         onChange={(e) => setPassword(e.target.value)}
-        className="w-full rounded-md bg-panel border border-white/10 px-3 py-2 text-sm outline-none focus:border-accent"
+        className={inputClass}
       />
-      {error && <p className="text-sm text-red-400">{error}</p>}
+      {isSignup && (
+        <input
+          type="password"
+          required
+          minLength={8}
+          autoComplete="new-password"
+          placeholder="비밀번호 확인"
+          value={confirm}
+          onChange={(e) => setConfirm(e.target.value)}
+          className={inputClass}
+        />
+      )}
+      {shownError && <p className="text-sm text-red-400">{shownError}</p>}
       <button
         type="submit"
         disabled={loading}

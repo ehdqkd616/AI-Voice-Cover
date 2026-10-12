@@ -29,7 +29,7 @@ def _set_session_cookie(response: Response, token: str) -> None:
 def _to_user_response(user: User) -> UserResponse:
     return UserResponse(
         id=str(user.id),
-        email=user.email,
+        username=user.username,
         is_approved=user.is_approved,
         is_admin=user.is_admin,
         created_at=user.created_at,
@@ -41,10 +41,10 @@ def signup(body: SignupRequest, background_tasks: BackgroundTasks) -> UserRespon
     """가입만 해두고 세션은 만들지 않는다 — 관리자 승인 전에는 로그인할 수 없다."""
     db = SessionLocal()
     try:
-        existing = db.execute(select(User).where(User.email == body.email)).scalar_one_or_none()
+        existing = db.execute(select(User).where(User.username == body.username)).scalar_one_or_none()
         if existing:
-            raise ApiError("EMAIL_TAKEN", "이미 가입된 이메일입니다.", {"email": body.email})
-        user = User(email=body.email, password_hash=hash_password(body.password))
+            raise ApiError("USERNAME_TAKEN", "이미 사용 중인 아이디입니다.", {"username": body.username})
+        user = User(username=body.username, password_hash=hash_password(body.password))
         db.add(user)
         db.commit()
         db.refresh(user)
@@ -52,7 +52,7 @@ def signup(body: SignupRequest, background_tasks: BackgroundTasks) -> UserRespon
         db.close()
 
     # 응답을 보낸 뒤 발송 — SMTP가 느리거나 실패해도 가입은 그대로 성공한다.
-    background_tasks.add_task(send_signup_notification, user.email, user.created_at)
+    background_tasks.add_task(send_signup_notification, user.username, user.created_at)
     return _to_user_response(user)
 
 
@@ -60,9 +60,9 @@ def signup(body: SignupRequest, background_tasks: BackgroundTasks) -> UserRespon
 def login(body: LoginRequest, response: Response) -> UserResponse:
     db = SessionLocal()
     try:
-        user = db.execute(select(User).where(User.email == body.email)).scalar_one_or_none()
+        user = db.execute(select(User).where(User.username == body.username)).scalar_one_or_none()
         if not user or not verify_password(body.password, user.password_hash):
-            raise ApiError("INVALID_CREDENTIALS", "이메일 또는 비밀번호가 올바르지 않습니다.")
+            raise ApiError("INVALID_CREDENTIALS", "아이디 또는 비밀번호가 올바르지 않습니다.")
         if not user.is_approved:
             raise ApiError("PENDING_APPROVAL", "관리자 승인 대기 중입니다.")
     finally:

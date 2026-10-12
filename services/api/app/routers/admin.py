@@ -14,7 +14,7 @@ router = APIRouter()
 def _to_user_response(user: User) -> UserResponse:
     return UserResponse(
         id=str(user.id),
-        email=user.email,
+        username=user.username,
         is_approved=user.is_approved,
         is_admin=user.is_admin,
         created_at=user.created_at,
