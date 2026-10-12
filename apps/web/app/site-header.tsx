@@ -61,11 +61,11 @@ export default function SiteHeader() {
                     href="/admin"
                     className={`whitespace-nowrap hover:text-white ${pathname.startsWith("/admin") ? "text-white" : ""}`}
                   >
-                    관리자
+                    관리자 페이지
                   </a>
                 )}
-                <a href="/account" className={`whitespace-nowrap truncate max-w-[10rem] hover:text-white ${pathname.startsWith("/account") ? "text-white" : "text-white/40"}`}>
-                  {user.name || user.username}
+                <a href="/account" title={user.username} className={`whitespace-nowrap hover:text-white ${pathname.startsWith("/account") ? "text-white" : ""}`}>
+                  내 정보
                 </a>
                 <button onClick={logout} className="hover:text-white whitespace-nowrap">
                   로그아웃
