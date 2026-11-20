@@ -9,6 +9,7 @@ import JobProgress from "@/components/JobProgress";
 import ResultPlayer from "@/components/ResultPlayer";
 import SourcePicker, { SourceInput } from "@/components/SourcePicker";
 import VoiceModelPicker from "@/components/VoiceModelPicker";
+import Landing from "@/components/landing/Landing";
 import { ApiError, api } from "@/lib/api-client";
 import { useAuth } from "@/lib/auth-context";
 import { translateError } from "@/lib/errors";
@@ -69,17 +70,8 @@ export default function HomePage() {
 
   if (authLoading) return <p className="text-sm text-white/50">불러오는 중…</p>;
 
-  if (!user) {
-    return (
-      <div className="space-y-4">
-        <h1 className="text-lg font-semibold">AI 보이스 커버 만들기</h1>
-        <p className="text-sm text-white/50">로그인이 필요합니다.</p>
-        <a href="/login" className="inline-block rounded-md bg-accent text-ink font-medium px-4 py-2 text-sm">
-          로그인
-        </a>
-      </div>
-    );
-  }
+  // 로그인 전: 서비스 소개
+  if (!user) return <Landing className="lp-embedded lp-dark" accent="#6ee7b7" />;
 
   return (
     <div className="space-y-6">
